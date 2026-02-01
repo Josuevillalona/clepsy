@@ -1,5 +1,9 @@
 ## **Earning Mechanics (Technical Spec)**
 
+**Implementation**: See `docs/plans/clepsy_mvp.md` → **Task 21B: Earning Session Manager** for complete implementation with tests.
+
+---
+
 ### **Rule 1: 60-Second Warmup**
 
 **Behavior:**

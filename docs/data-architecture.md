@@ -325,9 +325,40 @@ Suite Name: `group.com.clepsy.shared`
 
 **Problem**: Users leave apps in background for days. Launch-only check misses midnight!
 
-**Solution**: Check on MULTIPLE triggers:
+**Solution**: Check on MULTIPLE triggers using device's current timezone (simplified for MVP).
+
+**Design Decision (Updated 2026-02-01)**: Use device's current timezone only. MVP users don't travel across 5 timezones in a single day. This eliminates complex timezone offset logic while meeting MVP requirements.
 
 ```swift
+// In DashboardViewModel.swift
+class DashboardViewModel: ObservableObject {
+    @Published var timeBalance: TimeBalance = TimeBalance()
+    @UserDefault("lastResetDate", defaultValue: Date(timeIntervalSince1970: 0)) var lastResetDate: Date
+
+    func checkAndPerformDailyReset() {
+        let calendar = Calendar.current
+
+        // Get today's start of day in device's current timezone
+        let todayStartOfDay = calendar.startOfDay(for: Date())
+
+        // Get last reset's start of day
+        let lastResetStartOfDay = calendar.startOfDay(for: lastResetDate)
+
+        // Simple check: did calendar day change?
+        if todayStartOfDay > lastResetStartOfDay {
+            performDailyReset()
+        }
+    }
+
+    private func performDailyReset() {
+        timeBalance = TimeBalance(currentSeconds: 0)
+        lastResetDate = Date()
+        // Clear daily stats
+        persistenceService.saveDailyStats(earned: 0, spent: 0)
+        print("✅ Daily reset performed")
+    }
+}
+
 // In ClepsyApp.swift
 @Environment(\.scenePhase) var scenePhase
 
@@ -336,7 +367,7 @@ var body: some Scene {
         ContentView()
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
-                    // ✅ ALWAYS check when app enters foreground
+                    // ✅ Check when app enters foreground
                     viewModel.checkAndPerformDailyReset()
                 }
             }
@@ -353,14 +384,12 @@ var body: some View {
 }
 ```
 
-**Reset Logic**:
-1. Get current date (ignoring time)
-2. Compare to `lastResetDate`
-3. If different calendar day → perform reset:
-   - Set `timeBalance.currentSeconds = 0`
-   - Clear today's earned/spent stats
-   - Update `lastResetDate = now`
-   - Save to UserDefaults
+**Implementation Notes**:
+1. ✅ Uses `Calendar.startOfDay()` to get midnight in device timezone
+2. ✅ No complex offset calculations
+3. ✅ Automatically respects device's current timezone
+4. ✅ Checks on `scenePhase` (.active) + `onAppear` for coverage
+5. ⚠️ If user travels timezones, reset uses new device timezone (expected behavior for MVP)
 
 **Test Case**:
 - Open app at 11:45 PM
@@ -578,54 +607,104 @@ func loadTimeBalance() -> TimeBalance {
 }
 ```
 
-### Syncing from Monitor Extension (IMPROVED - Thread-Safe Queue)
+### Syncing from Monitor Extension (IMPROVED - Thread-Safe Queue with FileCoordination)
+
+**Updated 2026-02-01**: Replaced deprecated `.synchronize()` with FileCoordination for iOS 16+ standards.
 
 ```swift
 // In SharedStorageService.swift
+import Foundation
+
 class SharedStorageService {
-    private let sharedDefaults: UserDefaults?
+    private let appGroup = "group.com.clepsy.shared"
+    private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.clepsy.shared", qos: .userInitiated)
 
-    private enum Keys {
-        static let pendingTimeEvents = "pendingTimeEvents"
-    }
+    private lazy var containerURL: URL = {
+        fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroup) ?? FileManager.default.temporaryDirectory
+    }()
 
-    init() {
-        self.sharedDefaults = UserDefaults(suiteName: "group.com.clepsy.shared")
-    }
+    private lazy var eventsFileURL: URL = {
+        containerURL.appendingPathComponent("pendingTimeEvents.json")
+    }()
 
-    // MARK: - Thread-Safe Event Queue
+    // MARK: - Thread-Safe Event Queue (FileCoordination)
 
     /// Append a time event (called from extension)
+    /// Uses FileCoordination for atomic writes - modern iOS 16+ approach
     func appendEvent(_ event: TimeEvent) {
         queue.sync {
-            var events = getEvents()
-            events.append(event)
-            saveEvents(events)
-            sharedDefaults?.synchronize() // ✅ Force flush to disk
+            let fileCoordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
+
+            fileCoordinator.coordinate(
+                writingItemAt: eventsFileURL,
+                options: .forMerging,
+                error: &error
+            ) { url in
+                do {
+                    // Read existing events
+                    let data = try? Data(contentsOf: url)
+                    var events = (try? JSONDecoder().decode([TimeEvent].self, from: data ?? Data())) ?? []
+
+                    // Append new event
+                    events.append(event)
+
+                    // Write atomically
+                    let encoded = try JSONEncoder().encode(events)
+                    try encoded.write(to: url, options: .atomic)
+                } catch {
+                    print("❌ Error appending event: \(error)")
+                }
+            }
+
+            if let error = error {
+                print("❌ FileCoordination error: \(error)")
+            }
         }
     }
 
     /// Get all pending events (called from main app)
     func getEvents() -> [TimeEvent] {
-        guard let data = sharedDefaults?.data(forKey: Keys.pendingTimeEvents),
-              let events = try? JSONDecoder().decode([TimeEvent].self, from: data) else {
-            return []
+        let fileCoordinator = NSFileCoordinator(filePresenter: nil)
+        var events = [TimeEvent]()
+        var error: NSError?
+
+        fileCoordinator.coordinate(
+            readingItemAt: eventsFileURL,
+            options: [],
+            error: &error
+        ) { url in
+            do {
+                let data = try Data(contentsOf: url)
+                events = (try JSONDecoder().decode([TimeEvent].self, from: data)) ?? []
+            } catch {
+                print("❌ Error reading events: \(error)")
+            }
         }
+
         return events
     }
 
     /// Clear all events after processing (called from main app)
     func clearEvents() {
         queue.sync {
-            sharedDefaults?.removeObject(forKey: Keys.pendingTimeEvents)
-            sharedDefaults?.synchronize() // ✅ Force flush
-        }
-    }
+            let fileCoordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
 
-    private func saveEvents(_ events: [TimeEvent]) {
-        if let encoded = try? JSONEncoder().encode(events) {
-            sharedDefaults?.set(encoded, forKey: Keys.pendingTimeEvents)
+            fileCoordinator.coordinate(
+                writingItemAt: eventsFileURL,
+                options: .forDeleting,
+                error: &error
+            ) { url in
+                do {
+                    // Write empty array to clear
+                    let encoded = try JSONEncoder().encode([TimeEvent]())
+                    try encoded.write(to: url, options: .atomic)
+                } catch {
+                    print("❌ Error clearing events: \(error)")
+                }
+            }
         }
     }
 }
@@ -655,11 +734,12 @@ func syncPendingTime(to viewModel: DashboardViewModel) {
 ```
 
 **Key Improvements**:
-1. ✅ **Serial DispatchQueue**: Prevents race conditions
-2. ✅ **Explicit `.synchronize()`**: Ensures data reaches disk before extension terminates
-3. ✅ **Atomic operations**: Read entire queue → process → clear (no partial updates)
-4. ✅ **Chronological processing**: Events sorted by timestamp
-5. ✅ **Error handling**: Gracefully handles corrupt JSON
+1. ✅ **FileCoordination**: Modern iOS 16+ standard (replaces deprecated `.synchronize()`)
+2. ✅ **Atomic writes**: No partial data corruption even with simultaneous access
+3. ✅ **Serial DispatchQueue**: Prevents race conditions between app + extension
+4. ✅ **Atomic operations**: Read entire queue → process → clear (no partial updates)
+5. ✅ **Chronological processing**: Events sorted by timestamp
+6. ✅ **Error handling**: Gracefully handles corrupt JSON and file access errors
 
 ---
 

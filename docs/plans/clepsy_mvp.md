@@ -20,7 +20,65 @@
 
 **📖 See `docs/data-architecture.md` for complete architectural decisions and rationale.**
 
-**Updated tasks in this plan**: Tasks 17, 19, 20 (marked with ⚠️ below)
+**Updated tasks in this plan**: Tasks 17, 19, 20, 21B (new), 26-27 (asset alignment)
+
+---
+
+## Before You Start ✅
+
+### **Required Reading**
+
+**Critical Documents** (read before Task 0):
+- `docs/UPDATES-2026-02-01.md` - All architectural changes explained
+- `docs/data-architecture.md` - FileCoordination pattern, timezone handling
+- `clepsy_prd.md` - Product requirements and success metrics
+- `clepsy_mvb.md` - Brand guidelines (Clepsy character, tone, colors)
+
+**Reference During Implementation**:
+- `dashboard_specs.md`, `onboarding_specs.md`, `settings_specs.md` - UI specifications
+- `earning_specs.md` - Earning mechanics (60-sec warmup, 2-min timeout)
+- `error_state_specs.md` - Error handling scenarios
+- `docs/simulator-testing-guide.md` - Simulator testing strategy (Phases 1-4)
+
+### **Development Environment**
+
+**Requirements**:
+- Xcode 15.0+
+- Swift 5.9+
+- iOS 16.0+ deployment target
+- macOS 13+ (for Simulator)
+
+**Physical Device** (needed later for Phase 5):
+- iPhone with iOS 16+
+- Apple Developer account with Screen Time API entitlements
+
+### **Key Architecture Decisions**
+
+1. ✅ **Modern APIs**: FileCoordination (not deprecated `.synchronize()`)
+2. ✅ **Timezone**: Device time only (no complex offset logic)
+3. ✅ **Thread-Safe**: Event queue with `[TimeEvent]` array
+4. ✅ **Simulator-First**: Phases 1-4 fully testable, Phase 5 uses mocks until device
+5. ✅ **Asset Structure**: Decoupled layering (body + face separate, ZStack)
+
+### **Approval Checklist**
+
+Before proceeding, confirm:
+- [ ] Modern APIs approved (FileCoordination)
+- [ ] Simulator testing strategy understood (mock buttons for DeviceActivity)
+- [ ] Asset alignment verified (Tasks 26-27 use correct names from `clepsy_app_images/`)
+- [ ] 30 tasks reviewed (Tasks 0-30, including new Task 21B)
+- [ ] Ready to start with Task 0
+
+### **What Happens Next**
+
+**Task 0** (30 min): Xcode project setup, frameworks, folder structure
+**Phase 1** (2-3 hrs): Core models + persistence services (TDD)
+**Phase 2** (2-3 hrs): Onboarding flow (5 screens)
+**Phase 3** (2-3 hrs): Dashboard + character component
+**Phase 4** (3-4 hrs): DeviceActivity monitoring (mock-based on Simulator)
+**Phase 5** (1-2 hrs): Settings, assets, testing
+
+Full timeline: ~12-15 hours for MVP on Simulator, +2-3 hours for physical device testing
 
 ---
 
@@ -1833,6 +1891,10 @@ git commit -m "feat: add Clepsy character component with animations"
 **Files:**
 - Create: `Clepsy/Views/Dashboard/DashboardView.swift`
 
+**Scope Update** (2026-02-01): Now includes error banner for permission denied scenario. See `dashboard_specs.md` (Section 3.1B) for visual specifications.
+
+**Note**: Permission denied banner is conditional and appears at top of dashboard if `FamilyControls.authorization != .approved`
+
 **Step 1: Create DashboardView**
 
 Create `Clepsy/Views/Dashboard/DashboardView.swift`:
@@ -2011,7 +2073,9 @@ git commit -m "feat: add main dashboard view with balance and activity"
 **Files:**
 - Modify: `Clepsy/ClepsyApp.swift`
 
-**⚠️ Critical Update**: Added `scenePhase` observer to ensure daily reset triggers when app enters foreground (not just on launch). Prevents missed resets when app stays backgrounded overnight.
+**⚠️ Critical Update** (2026-02-01):
+1. Added `scenePhase` observer to ensure daily reset triggers when app enters foreground (not just on launch)
+2. Simplified timezone handling: Use device's current timezone only (MVP doesn't handle travel scenarios)
 
 **Step 1: Read existing file**
 
@@ -2269,7 +2333,10 @@ git commit -m "feat: add TimeEvent model for thread-safe event queue"
 - Create: `Clepsy/Services/SharedStorageService.swift`
 - Create: `ClepsyTests/Services/SharedStorageServiceTests.swift`
 
-**⚠️ Critical Update**: Changed from simple `Int` values to thread-safe event queue using serial `DispatchQueue` and `.synchronize()` calls.
+**⚠️ Critical Update** (2026-02-01):
+1. Changed from simple `Int` values to thread-safe event queue using `[TimeEvent]` array
+2. Replaced deprecated `.synchronize()` with FileCoordination (iOS 16+ standard)
+3. Uses `NSFileCoordinator` for atomic writes between app + extension
 
 **Step 1: Write the failing test**
 
@@ -2335,64 +2402,104 @@ final class SharedStorageServiceTests: XCTestCase {
 Run: `Cmd+U`
 Expected: FAIL with "Cannot find 'SharedStorageService' in scope"
 
-**Step 3: Write minimal implementation**
+**Step 3: Write minimal implementation (with FileCoordination)**
 
 Create `Clepsy/Services/SharedStorageService.swift`:
 ```swift
 import Foundation
 
 class SharedStorageService {
-    private let sharedDefaults: UserDefaults?
+    private let appGroup = "group.com.clepsy.shared"
+    private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.clepsy.shared", qos: .userInitiated)
 
-    private enum Keys {
-        static let pendingTimeEvents = "pendingTimeEvents"
-    }
+    private lazy var containerURL: URL = {
+        fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
+            ?? FileManager.default.temporaryDirectory
+    }()
+
+    private lazy var eventsFileURL: URL = {
+        containerURL.appendingPathComponent("pendingTimeEvents.json")
+    }()
 
     init() {
-        self.sharedDefaults = UserDefaults(suiteName: "group.com.clepsy.shared")
+        // Ensure container directory exists
+        try? fileManager.createDirectory(at: containerURL, withIntermediateDirectories: true)
     }
 
-    // MARK: - Thread-Safe Event Queue
+    // MARK: - Thread-Safe Event Queue (FileCoordination)
 
     /// Append a time event (called from extension)
+    /// Uses FileCoordination for atomic writes
     func appendEvent(_ event: TimeEvent) {
         queue.sync {
-            var events = getEventsUnsafe()
-            events.append(event)
-            saveEvents(events)
-            sharedDefaults?.synchronize() // Force flush to disk
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
+
+            coordinator.coordinate(
+                writingItemAt: eventsFileURL,
+                options: .forMerging,
+                error: &error
+            ) { url in
+                do {
+                    let data = try? Data(contentsOf: url)
+                    var events = (try? JSONDecoder().decode([TimeEvent].self, from: data ?? Data())) ?? []
+                    events.append(event)
+                    let encoded = try JSONEncoder().encode(events)
+                    try encoded.write(to: url, options: .atomic)
+                } catch {
+                    print("❌ Error appending event: \(error)")
+                }
+            }
+
+            if let error = error {
+                print("❌ FileCoordination error: \(error)")
+            }
         }
     }
 
     /// Get all pending events (called from main app)
     func getEvents() -> [TimeEvent] {
         return queue.sync {
-            return getEventsUnsafe()
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var events = [TimeEvent]()
+            var error: NSError?
+
+            coordinator.coordinate(
+                readingItemAt: eventsFileURL,
+                options: [],
+                error: &error
+            ) { url in
+                do {
+                    let data = try Data(contentsOf: url)
+                    events = (try JSONDecoder().decode([TimeEvent].self, from: data)) ?? []
+                } catch {
+                    print("⚠️ No events file yet or JSON error: \(error)")
+                }
+            }
+
+            return events
         }
     }
 
     /// Clear all events after processing (called from main app)
     func clearEvents() {
         queue.sync {
-            sharedDefaults?.removeObject(forKey: Keys.pendingTimeEvents)
-            sharedDefaults?.synchronize() // Force flush
-        }
-    }
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
 
-    // MARK: - Private Helpers (must be called within queue.sync)
-
-    private func getEventsUnsafe() -> [TimeEvent] {
-        guard let data = sharedDefaults?.data(forKey: Keys.pendingTimeEvents),
-              let events = try? JSONDecoder().decode([TimeEvent].self, from: data) else {
-            return []
-        }
-        return events
-    }
-
-    private func saveEvents(_ events: [TimeEvent]) {
-        if let encoded = try? JSONEncoder().encode(events) {
-            sharedDefaults?.set(encoded, forKey: Keys.pendingTimeEvents)
+            coordinator.coordinate(
+                writingItemAt: eventsFileURL,
+                options: .forDeleting,
+                error: &error
+            ) { url in
+                do {
+                    let emptyArray = try JSONEncoder().encode([TimeEvent]())
+                    try emptyArray.write(to: url, options: .atomic)
+                } catch {
+                    print("❌ Error clearing events: \(error)")
+                }
+            }
         }
     }
 }
@@ -2509,6 +2616,250 @@ Build and verify no compilation errors
 ```bash
 git add Clepsy/Services/UsageTrackingService.swift
 git commit -m "feat: add UsageTrackingService for DeviceActivity scheduling"
+```
+
+---
+
+### Task 21B: Earning Session Manager ⭐ NEW
+
+**Purpose**: Implements earning mechanics from earning_specs: 60-second warmup + 2-minute timeout logic
+
+**Files:**
+- Create: `Clepsy/Services/EarningSessionManager.swift`
+- Create: `ClepsyTests/Services/EarningSessionManagerTests.swift`
+
+**Why This Task**: Earning mechanics are critical to MVP but underspecified in original plan. This service implements:
+- 60-second warmup before tracking starts
+- 2-minute timeout to pause/resume sessions
+- 5-minute balance update frequency
+- Session end → credit balance
+
+**Step 1: Write tests first**
+
+Create `ClepsyTests/Services/EarningSessionManagerTests.swift`:
+```swift
+import XCTest
+@testable import Clepsy
+
+final class EarningSessionManagerTests: XCTestCase {
+    var manager: EarningSessionManager!
+
+    override func setUp() {
+        super.setUp()
+        manager = EarningSessionManager()
+    }
+
+    func testWarmupRequiredBeforeEarning() {
+        // User opens productive app
+        manager.startSession(for: "com.amazon.Kindle")
+
+        // At 30 seconds: should not have earned time yet
+        manager.simulateElapsedTime(seconds: 30)
+        XCTAssertEqual(manager.currentSessionEarnings, 0)
+
+        // At 60 seconds: warmup complete, tracking starts
+        manager.simulateElapsedTime(seconds: 30)
+        XCTAssertEqual(manager.currentSessionEarnings, 0) // No earnings yet
+
+        // At 70 seconds: 10 seconds of actual usage = 0 min earned
+        manager.simulateElapsedTime(seconds: 10)
+        XCTAssertEqual(manager.currentSessionEarnings, 0)
+
+        // At 120 seconds: 60 seconds of actual usage = 1 min earned
+        manager.simulateElapsedTime(seconds: 50)
+        XCTAssertEqual(manager.currentSessionEarnings, 60)
+    }
+
+    func testBriefInterruptionResumesSession() {
+        // User in Kindle for 5 minutes
+        manager.startSession(for: "com.amazon.Kindle")
+        manager.simulateElapsedTime(seconds: 300 + 60) // 5 min + warmup
+
+        let earningsAfter5Min = manager.currentSessionEarnings
+        XCTAssertGreaterThan(earningsAfter5Min, 0)
+
+        // Brief interruption (30 seconds)
+        manager.pauseSession()
+        manager.simulateElapsedTime(seconds: 30)
+
+        // Resume: session resumes without new warmup
+        manager.resumeSession()
+        manager.simulateElapsedTime(seconds: 60)
+
+        // Should have additional earnings
+        XCTAssertGreaterThan(manager.currentSessionEarnings, earningsAfter5Min)
+    }
+
+    func testLongInterruptionEndsSession() {
+        // User in Kindle for 5 minutes
+        manager.startSession(for: "com.amazon.Kindle")
+        manager.simulateElapsedTime(seconds: 360 + 60) // 6 min total
+
+        let earningsBeforePause = manager.currentSessionEarnings
+        XCTAssertGreaterThan(earningsBeforePause, 0)
+
+        // Long interruption (2.5 minutes > timeout)
+        manager.pauseSession()
+        manager.simulateElapsedTime(seconds: 150)
+
+        // Session should end
+        let sessionEnded = manager.endSession()
+        XCTAssertTrue(sessionEnded)
+
+        // Next app open requires new warmup
+        manager.startSession(for: "com.amazon.Kindle")
+        manager.simulateElapsedTime(seconds: 30)
+        XCTAssertEqual(manager.currentSessionEarnings, 0) // Warmup required again
+    }
+
+    func testBalanceUpdateFrequency() {
+        manager.startSession(for: "com.amazon.Kindle")
+        manager.simulateElapsedTime(seconds: 60) // Warmup
+
+        var updatesReceived = [Int]()
+        manager.onBalanceUpdate = { seconds in
+            updatesReceived.append(seconds)
+        }
+
+        // Earn for 12 minutes (5 + 5 + 2)
+        manager.simulateElapsedTime(seconds: 300) // 5 min earned → update
+        manager.simulateElapsedTime(seconds: 300) // 10 min earned → update
+        manager.simulateElapsedTime(seconds: 120) // 12 min earned → no update yet
+
+        XCTAssertEqual(updatesReceived.count, 2) // Two updates at 5 and 10 min
+
+        // Session ends → final update
+        manager.endSession()
+        XCTAssertEqual(updatesReceived.count, 3) // Third update on session end
+    }
+}
+```
+
+**Step 2: Write minimal implementation**
+
+Create `Clepsy/Services/EarningSessionManager.swift`:
+```swift
+import Foundation
+
+class EarningSessionManager {
+    private var currentSessionId: UUID?
+    private var currentSessionStartTime: Date?
+    private var currentSessionPausedTime: TimeInterval = 0
+    private var currentAppBundleId: String?
+    private var currentSessionEarningsSeconds: Int = 0
+    private var warmupExpired = false
+    private var pauseStartTime: Date?
+    private var lastBalanceUpdateTime: Date?
+
+    // Callback for balance updates (every 5 minutes or session end)
+    var onBalanceUpdate: ((Int) -> Void)?
+
+    private let warmupDuration: TimeInterval = 60 // 60 seconds
+    private let pauseTimeoutDuration: TimeInterval = 120 // 2 minutes
+    private let balanceUpdateInterval: TimeInterval = 300 // 5 minutes
+
+    // MARK: - Public Interface
+
+    func startSession(for appBundleId: String) {
+        self.currentSessionId = UUID()
+        self.currentAppBundleId = appBundleId
+        self.currentSessionStartTime = Date()
+        self.currentSessionEarningsSeconds = 0
+        self.warmupExpired = false
+        self.lastBalanceUpdateTime = Date()
+        print("📱 Earning session started for \(appBundleId)")
+    }
+
+    func pauseSession() {
+        pauseStartTime = Date()
+        print("⏸️ Session paused")
+    }
+
+    func resumeSession() {
+        guard let pauseStart = pauseStartTime else { return }
+
+        let pausedDuration = Date().timeIntervalSince(pauseStart)
+
+        if pausedDuration > pauseTimeoutDuration {
+            // Pause was too long, session ends
+            print("❌ Pause exceeded 2 minutes, session will end")
+            _ = endSession()
+        } else {
+            // Brief pause, add to total paused time
+            currentSessionPausedTime += pausedDuration
+            pauseStartTime = nil
+            print("▶️ Session resumed (paused for \(pausedDuration)s)")
+        }
+    }
+
+    func endSession() -> Bool {
+        guard currentSessionId != nil else { return false }
+
+        // Credit any remaining earnings
+        let remainingEarnings = calculateEarnings()
+        if remainingEarnings > currentSessionEarningsSeconds {
+            currentSessionEarningsSeconds = remainingEarnings
+            onBalanceUpdate?(currentSessionEarningsSeconds)
+        }
+
+        print("✅ Session ended with \(currentSessionEarningsSeconds) seconds earned")
+        currentSessionId = nil
+        return true
+    }
+
+    var currentSessionEarnings: Int {
+        guard currentSessionId != nil else { return 0 }
+
+        let totalEarnings = calculateEarnings()
+
+        // Check if we should send balance update
+        if totalEarnings >= currentSessionEarningsSeconds + Int(balanceUpdateInterval) {
+            currentSessionEarningsSeconds = totalEarnings
+            lastBalanceUpdateTime = Date()
+            onBalanceUpdate?(currentSessionEarningsSeconds)
+        }
+
+        return currentSessionEarningsSeconds
+    }
+
+    // MARK: - Private Helpers
+
+    private func calculateEarnings() -> Int {
+        guard let startTime = currentSessionStartTime else { return 0 }
+
+        let elapsed = Date().timeIntervalSince(startTime) - currentSessionPausedTime
+
+        // Warmup: first 60 seconds don't count
+        guard elapsed > warmupDuration else { return 0 }
+
+        // Earning time = (elapsed - warmup) in seconds
+        let earnedSeconds = Int(elapsed - warmupDuration)
+        return max(0, earnedSeconds)
+    }
+
+    // MARK: - Testing Only
+
+    #if DEBUG
+    func simulateElapsedTime(seconds: TimeInterval) {
+        // For testing: advance the clock
+        if let startTime = currentSessionStartTime {
+            currentSessionStartTime = startTime.addingTimeInterval(-seconds)
+        }
+    }
+    #endif
+}
+```
+
+**Step 3: Run tests**
+
+Run: `Cmd+U`
+Expected: All tests PASS
+
+**Step 4: Commit**
+
+```bash
+git add Clepsy/Services/EarningSessionManager.swift ClepsyTests/Services/EarningSessionManagerTests.swift
+git commit -m "feat: add EarningSessionManager with warmup and timeout mechanics"
 ```
 
 ---
@@ -2831,30 +3182,56 @@ git commit -m "assets: add app icon at all required sizes"
 **Files:**
 - Add to: `Clepsy/Assets.xcassets/ClepsyCharacter/`
 
-**Step 1: Create asset folders**
+**Asset Source**: `clepsy_app_images/` folder (27 files total: 3 faces × 3 scales + 5 body levels × 3 scales)
 
-In Assets.xcassets, create image sets:
-- `clepsy_face_patient`
-- `clepsy_face_encouraging`
-- `clepsy_face_celebrating`
-- `clepsy_body_0`
-- `clepsy_body_20`
-- `clepsy_body_40`
-- `clepsy_body_60`
-- `clepsy_body_80`
-- `clepsy_body_100`
+**Step 1: Create image sets in Assets.xcassets**
 
-**Step 2: Add placeholder images**
+In Xcode Assets.xcassets, create **8 image sets** (NOT individual files - Xcode manages @1x/@2x/@3x):
 
-For MVP, we'll use SF Symbols as placeholders.
-In production, add actual asset PNGs at @1x, @2x, @3x from design team.
+**Face expressions** (3 sets):
+- `patience_face` (for shield screen, morning start)
+- `encouraging_face` (for earning milestones, unlocking)
+- `celebrating_face` (for daily goal met, streaks)
 
-**Step 3: Commit**
+**Body sand levels** (5 sets):
+- `body_level_0` (empty hourglass, 0% progress)
+- `body_level_25` (25% sand level)
+- `body_level_50` (50% sand level)
+- `body_level_75` (75% sand level)
+- `body_level_100` (full hourglass, 100% progress)
+
+**Step 2: Import assets from clepsy_app_images/**
+
+For each image set, drag the corresponding files:
+
+```
+patience_face:
+  - @1x_clepsy_app_icons_(240x320px)/patience_face@1x.png.png → 1x slot
+  - @2x_clepsy_app_icons_(480x640px)/patience_face@2x.png.png → 2x slot
+  - @3_clepsy_app_icons_(720x960px)/patience_face@3x.png.png → 3x slot
+
+body_level_0:
+  - @1x_clepsy_app_icons_(240x320px)/body_level_0@1x.png.png → 1x slot
+  - @2x_clepsy_app_icons_(480x640px)/body_level_0@2x.png.png → 2x slot
+  - @3_clepsy_app_icons_(720x960px)/body_level_0@3x.png.png → 3x slot
+
+(Repeat for all 8 image sets)
+```
+
+**Step 3: Verify assets**
+
+- [ ] All image sets show 3 scales (1x, 2x, 3x)
+- [ ] Transparency preserved (PNG-24)
+- [ ] Canvas size is uniform (240×320pt)
+
+**Step 4: Commit**
 
 ```bash
 git add Clepsy/Assets.xcassets/ClepsyCharacter/
-git commit -m "assets: add Clepsy character image asset structure"
+git commit -m "assets: add Clepsy character images (3 faces + 5 body levels)"
 ```
+
+**Reference**: See `clepsy_app_images/clepsy_mascot_asset_guide.md` for layering strategy
 
 ---
 
@@ -2863,39 +3240,34 @@ git commit -m "assets: add Clepsy character image asset structure"
 **Files:**
 - Modify: `Clepsy/Views/Components/ClepsyCharacterView.swift`
 
+**Asset Strategy**: Use **Decoupled Layering System** from `clepsy_mascot_asset_guide.md` - body and face are separate layers in a ZStack.
+
 **Step 1: Read current implementation**
 
 Already read
 
-**Step 2: Update to use assets**
+**Step 2: Update to use real assets**
 
-Replace `HourglassBody` and `FaceExpression` with asset-based implementation:
+Replace placeholder code with production asset loading:
 ```swift
 struct HourglassBody: View {
     let fillPercentage: Double
 
     var sandLevel: String {
+        // Map percentage to 5 sand levels (0, 25, 50, 75, 100)
         switch fillPercentage {
-        case 0..<0.2: return "clepsy_body_0"
-        case 0.2..<0.4: return "clepsy_body_20"
-        case 0.4..<0.6: return "clepsy_body_40"
-        case 0.6..<0.8: return "clepsy_body_60"
-        case 0.8..<1.0: return "clepsy_body_80"
-        default: return "clepsy_body_100"
+        case 0..<0.125: return "body_level_0"      // 0-12.5% → empty
+        case 0.125..<0.375: return "body_level_25" // 12.5-37.5% → 25%
+        case 0.375..<0.625: return "body_level_50" // 37.5-62.5% → 50%
+        case 0.625..<0.875: return "body_level_75" // 62.5-87.5% → 75%
+        default: return "body_level_100"           // 87.5-100% → full
         }
     }
 
     var body: some View {
-        // For MVP with placeholder assets
-        Image(systemName: "hourglass")
+        Image(sandLevel)
             .resizable()
-            .aspectRatio(contentMode: .fit)
-            .foregroundColor(fillPercentage > 0.5 ? .purple : .gray)
-
-        // Production version would use:
-        // Image(sandLevel)
-        //     .resizable()
-        //     .aspectRatio(contentMode: .fit)
+            .scaledToFit()
     }
 }
 
@@ -2904,38 +3276,75 @@ struct FaceExpression: View {
 
     var faceName: String {
         switch expression {
-        case .patient: return "clepsy_face_patient"
-        case .encouraging: return "clepsy_face_encouraging"
-        case .celebrating: return "clepsy_face_celebrating"
+        case .patient: return "patience_face"
+        case .encouraging: return "encouraging_face"
+        case .celebrating: return "celebrating_face"
         }
     }
 
     var body: some View {
-        // For MVP with placeholder
-        Image(systemName: expression == .celebrating ? "face.smiling.fill" : "face.smiling")
+        Image(faceName)
             .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: 60, height: 60)
-
-        // Production version would use:
-        // Image(faceName)
-        //     .resizable()
-        //     .aspectRatio(contentMode: .fit)
+            .scaledToFit()
     }
 }
 ```
 
-**Step 3: Test in Preview**
+**Step 3: Update ClepsyCharacterView to ensure proper ZStack**
 
-Run: Preview to see updated character
-Expected: Placeholder symbols render correctly
+Verify the main view matches asset guide's layering:
+```swift
+struct ClepsyCharacterView: View {
+    let balancePercentage: Double // 0.0 to 1.0
+    let expression: ClepsyExpression
 
-**Step 4: Commit**
+    @State private var animationOffset: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            // Layer 1: Hourglass Body (sand level)
+            HourglassBody(fillPercentage: balancePercentage)
+
+            // Layer 2: Face Expression (overlays on body)
+            FaceExpression(expression: expression)
+        }
+        .frame(width: 240, height: 320) // Canvas size from asset guide
+        .offset(y: animationOffset)
+        .onAppear {
+            startFloatingAnimation()
+        }
+    }
+
+    private func startFloatingAnimation() {
+        // Subtle float: 8-10pt amplitude, 3.5s duration (from asset guide)
+        withAnimation(
+            .easeInOut(duration: 3.5)
+            .repeatForever(autoreverses: true)
+        ) {
+            animationOffset = 10
+        }
+    }
+}
+```
+
+**Step 4: Test in Preview**
+
+Run: Xcode Preview
+Expected:
+- ✅ Character displays with transparent PNG assets
+- ✅ Body and face layer correctly (ZStack)
+- ✅ Floating animation works (10pt vertical offset, 3.5s loop)
+- ✅ Sand level changes when balancePercentage updates
+- ✅ Face expression changes when expression updates
+
+**Step 5: Commit**
 
 ```bash
 git add Clepsy/Views/Components/ClepsyCharacterView.swift
-git commit -m "refactor: update character view to support asset loading"
+git commit -m "feat: use production Clepsy assets with decoupled layering"
 ```
+
+**Reference**: All logic maps from `clepsy_app_images/clepsy_mascot_asset_guide.md` → "Logic & State Mapping" table
 
 ---
 

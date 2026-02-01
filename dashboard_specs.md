@@ -176,6 +176,84 @@ The dashboard is the **main hub** of the Clepsy app where users:
 
 ---
 
+### **3.1B Error Banner (Conditional - Permission Denied)**
+
+**When to Display:**
+
+This banner appears if:
+- User previously granted Screen Time permission
+- Permission was later revoked in iOS Settings
+- App detects `FamilyControls.authorization != .approved` on launch
+
+**Layout:**
+
+```
+┌─────────────────────────────────────┐
+│ ⚠️ Permission Required              │
+│                                     │
+│ Clepsy can't work without Screen    │
+│ Time permission. Vice apps are      │
+│ currently unblocked.                │
+│                                     │
+│ [Open Settings →]                   │
+└─────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+
+* **Background:** `#FF8C42` (Warning Orange) with 20% opacity
+* **Border:** 2px solid `#FF8C42`
+* **Border radius:** 16pt
+* **Padding:** 16pt all sides
+* **Height:** 120pt
+* **Position:** Fixed at TOP of dashboard, above Balance Hero Card
+* **Shadow:** None (flat design)
+
+**Icon (Left side):**
+
+* SF Symbol: "exclamationmark.triangle.fill"
+* Size: 32pt
+* Color: `#FF8C42`
+* Margin: 16pt right
+
+**Text Content:**
+
+**Header:**
+* Font: SF Pro Text, 17pt, Semibold
+* Color: `#1E2A3A` (Text on Warning)
+* Text: "Permission Required"
+* Margin bottom: 8pt
+
+**Description:**
+* Font: SF Pro Text, 15pt, Regular
+* Color: `#1E2A3A` (Text on Warning)
+* Text: "Clepsy can't work without Screen Time permission. Vice apps are currently unblocked."
+* Margin bottom: 12pt
+
+**Button:**
+* Style: Inline link with chevron
+* Font: SF Pro Text, 15pt, Semibold
+* Color: `#1E2A3A`
+* Icon: SF Symbol "chevron.right" (12pt, inline)
+* Action: Deep link to iOS Settings (`App-prefs:root=SCREEN_TIME`)
+* Tap target: Full banner is tappable
+
+**Behavior:**
+
+* Appears between Nav Bar and Balance Hero Card
+* Not dismissible (persists until permission granted)
+* Dashboard still renders below banner (data is accessible)
+* Vice apps are unblocked (can't enforce without permission)
+* Productive app tracking still works (doesn't require permission)
+* When permission granted and app resumes:
+  - Banner disappears immediately
+  - Vice apps shield becomes active
+  - Dashboard refreshes
+
+**Reference**: See `error_state_specs.md` (Error 1B) for complete error handling logic
+
+---
+
 ### **3.2 Balance Hero Card**
 
 **Purpose:** Show current spendable balance and Clepsy character
