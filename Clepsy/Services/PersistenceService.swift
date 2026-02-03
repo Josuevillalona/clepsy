@@ -13,6 +13,13 @@ class PersistenceService {
         self.userDefaults = userDefaults
     }
 
+    convenience init?(suiteName: String) {
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            return nil
+        }
+        self.init(userDefaults: userDefaults)
+    }
+
     // MARK: - Time Balance
 
     func saveTimeBalance(_ balance: TimeBalance) {
