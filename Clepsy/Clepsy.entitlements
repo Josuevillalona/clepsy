@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.developer.family-controls</key>
-	<true/>
+	<!-- com.apple.developer.family-controls requires paid developer account -->
+	<!-- Uncomment when testing on physical device with paid account -->
+	<!-- <key>com.apple.developer.family-controls</key> -->
+	<!-- <true/> -->
+	<!-- <key>com.apple.security.application-groups</key> -->
+	<!-- <array> -->
+	<!-- 	<string>group.com.clepsy.shared</string> -->
+	<!-- </array> -->
 </dict>
 </plist>

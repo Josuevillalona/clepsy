@@ -6,13 +6,15 @@ class DashboardViewModel: ObservableObject {
     @Published var currentBalance: TimeBalance
     @Published var todayEarned: Int = 0
     @Published var todaySpent: Int = 0
+    @Published var dailyGoalSeconds: Int = 1800 // default 30 min
 
     private let persistenceService: PersistenceService
-    private let maxDisplaySeconds = 3600 // 1 hour for percentage calculation
 
     init(persistenceService: PersistenceService = PersistenceService()) {
         self.persistenceService = persistenceService
         self.currentBalance = persistenceService.loadTimeBalance()
+        let settings = persistenceService.loadUserSettings()
+        self.dailyGoalSeconds = settings.dailyGoalMinutes * 60
     }
 
     func addTime(seconds: Int) {
@@ -33,7 +35,13 @@ class DashboardViewModel: ObservableObject {
     }
 
     var balancePercentage: Double {
-        return Double(currentBalance.currentSeconds) / Double(maxDisplaySeconds)
+        guard dailyGoalSeconds > 0 else { return 0 }
+        return Double(currentBalance.currentSeconds) / Double(dailyGoalSeconds)
+    }
+
+    func refreshGoal() {
+        let settings = persistenceService.loadUserSettings()
+        dailyGoalSeconds = settings.dailyGoalMinutes * 60
     }
 
     func checkAndPerformDailyReset() {

@@ -1,104 +1,131 @@
 import SwiftUI
 
-struct AppSelectionView: View {
+struct ViceAppSelectionView: View {
     let onContinue: () -> Void
     let onBack: () -> Void
 
-    @State private var selectedViceApps = Set<UUID>()
-    @State private var selectedProductiveApps = Set<UUID>()
+    @State private var selectedApps = Set<UUID>()
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2)
-                        .foregroundColor(.purple)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
+        ZStack {
+            Color.clepsyMidnight.ignoresSafeArea()
 
-            Text("Choose Your Apps")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Vice Apps Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Vice Apps (to block)")
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
                             .font(.title2)
-                            .fontWeight(.semibold)
+                            .foregroundColor(.clepsyGold)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.top, ClepsySpacing.sm)
 
-                        Text("These apps will be locked by default")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                Text("Apps to Block")
+                    .font(.clepsyLargeTitle)
+                    .foregroundColor(.clepsyTextPrimary)
+                    .padding(.top, ClepsySpacing.xs)
 
+                Text("Select the apps you want Clepsy to lock")
+                    .font(.clepsySubheadline)
+                    .foregroundColor(.clepsyTextSecondary)
+                    .padding(.top, 4)
+                    .padding(.bottom, ClepsySpacing.sm)
+
+                ScrollView {
+                    VStack(spacing: 8) {
                         ForEach(AppCategory.defaultViceApps) { app in
                             AppToggleRow(
                                 app: app,
-                                isSelected: selectedViceApps.contains(app.id),
+                                isSelected: selectedApps.contains(app.id),
                                 onToggle: {
-                                    if selectedViceApps.contains(app.id) {
-                                        selectedViceApps.remove(app.id)
+                                    if selectedApps.contains(app.id) {
+                                        selectedApps.remove(app.id)
                                     } else {
-                                        selectedViceApps.insert(app.id)
+                                        selectedApps.insert(app.id)
                                     }
                                 }
                             )
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, ClepsySpacing.md)
+                    .padding(.vertical)
+                }
 
-                    Divider()
-                        .padding(.vertical, 8)
+                Button(action: onContinue) {
+                    Text("Continue")
+                }
+                .buttonStyle(.clepsyPrimary)
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.vertical, ClepsySpacing.sm)
+            }
+        }
+    }
+}
 
-                    // Productive Apps Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Productive Apps")
+struct ProductiveAppSelectionView: View {
+    let onContinue: () -> Void
+    let onBack: () -> Void
+
+    @State private var selectedApps = Set<UUID>()
+
+    var body: some View {
+        ZStack {
+            Color.clepsyMidnight.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
                             .font(.title2)
-                            .fontWeight(.semibold)
+                            .foregroundColor(.clepsyGold)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.top, ClepsySpacing.sm)
 
-                        Text("Earn time by using these apps")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                Text("Productive Apps")
+                    .font(.clepsyLargeTitle)
+                    .foregroundColor(.clepsyTextPrimary)
+                    .padding(.top, ClepsySpacing.xs)
 
+                Text("Earn time by using these apps")
+                    .font(.clepsySubheadline)
+                    .foregroundColor(.clepsyTextSecondary)
+                    .padding(.top, 4)
+                    .padding(.bottom, ClepsySpacing.sm)
+
+                ScrollView {
+                    VStack(spacing: 8) {
                         ForEach(AppCategory.defaultProductiveApps) { app in
                             AppToggleRow(
                                 app: app,
-                                isSelected: selectedProductiveApps.contains(app.id),
+                                isSelected: selectedApps.contains(app.id),
                                 onToggle: {
-                                    if selectedProductiveApps.contains(app.id) {
-                                        selectedProductiveApps.remove(app.id)
+                                    if selectedApps.contains(app.id) {
+                                        selectedApps.remove(app.id)
                                     } else {
-                                        selectedProductiveApps.insert(app.id)
+                                        selectedApps.insert(app.id)
                                     }
                                 }
                             )
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, ClepsySpacing.md)
+                    .padding(.vertical)
                 }
-                .padding(.vertical)
-            }
 
-            // Continue Button
-            Button(action: onContinue) {
-                Text("Continue")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.purple)
-                    .cornerRadius(12)
+                Button(action: onContinue) {
+                    Text("Continue")
+                }
+                .buttonStyle(.clepsyPrimary)
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.vertical, ClepsySpacing.sm)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 16)
         }
     }
 }
@@ -111,24 +138,29 @@ struct AppToggleRow: View {
     var body: some View {
         Button(action: onToggle) {
             HStack {
-                Image(systemName: "app.fill")
-                    .foregroundColor(.purple)
+                AppIconView(bundleIdentifier: app.bundleIdentifier)
+                    .frame(width: 36, height: 36)
 
                 Text(app.name)
-                    .foregroundColor(.primary)
+                    .foregroundColor(.clepsyTextPrimary)
 
                 Spacer()
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .purple : .gray)
+                    .foregroundColor(isSelected ? .clepsyGold : .clepsyTextSecondary)
+                    .font(.title2)
             }
             .padding()
-            .background(Color(.systemGray6))
+            .background(Color.clepsySurface)
             .cornerRadius(12)
         }
     }
 }
 
-#Preview {
-    AppSelectionView(onContinue: {}, onBack: {})
+#Preview("Vice Apps") {
+    ViceAppSelectionView(onContinue: {}, onBack: {})
+}
+
+#Preview("Productive Apps") {
+    ProductiveAppSelectionView(onContinue: {}, onBack: {})
 }

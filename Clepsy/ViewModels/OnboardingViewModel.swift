@@ -9,7 +9,7 @@ class OnboardingViewModel: ObservableObject {
     private let persistenceService: PersistenceService
     private let screenTimeService: ScreenTimeService
 
-    let totalSteps = 5 // Per onboarding_specs.md
+    let totalSteps = 5
 
     init(
         persistenceService: PersistenceService = PersistenceService(),

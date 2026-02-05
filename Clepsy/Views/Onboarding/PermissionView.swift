@@ -8,61 +8,60 @@ struct PermissionView: View {
     @State private var isRequesting = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2)
-                        .foregroundColor(.purple)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
+        ZStack {
+            Color.clepsyMidnight.ignoresSafeArea()
 
-            Spacer()
-
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.purple)
-
-            Text("Screen Time Permission")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-
-            Text("Clepsy needs permission to monitor app usage and manage screen time. This data stays private on your device.")
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .padding(.horizontal)
-
-            Spacer()
-
-            Button(action: {
-                Task {
-                    isRequesting = true
-                    await viewModel.requestScreenTimePermission()
-                    isRequesting = false
-                    onContinue()
-                }
-            }) {
+            VStack(spacing: ClepsySpacing.md) {
                 HStack {
-                    if isRequesting {
-                        ProgressView()
-                            .tint(.white)
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.title2)
+                            .foregroundColor(.clepsyGold)
                     }
-                    Text(isRequesting ? "Requesting..." : "Grant Permission")
-                        .font(.headline)
+                    Spacer()
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.purple)
-                .cornerRadius(12)
+                .padding(.horizontal, ClepsySpacing.md)
+
+                Spacer()
+
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.clepsyGold)
+
+                Text("Screen Time Permission")
+                    .font(.clepsyTitle)
+                    .foregroundColor(.clepsyTextPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("Clepsy needs permission to monitor app usage and manage screen time. This data stays private on your device.")
+                    .font(.clepsyBody)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.clepsyTextSecondary)
+                    .padding(.horizontal, ClepsySpacing.md)
+
+                Spacer()
+
+                Button(action: {
+                    Task {
+                        isRequesting = true
+                        await viewModel.requestScreenTimePermission()
+                        isRequesting = false
+                        onContinue()
+                    }
+                }) {
+                    HStack {
+                        if isRequesting {
+                            ProgressView()
+                                .tint(.clepsyMidnight)
+                        }
+                        Text(isRequesting ? "Requesting..." : "Grant Permission")
+                    }
+                }
+                .buttonStyle(.clepsyPrimary)
+                .disabled(isRequesting)
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.bottom, ClepsySpacing.lg)
             }
-            .disabled(isRequesting)
-            .padding(.horizontal)
-            .padding(.bottom, 32)
         }
     }
 }

@@ -16,7 +16,7 @@ struct ClepsyApp: App {
                     hasCompletedOnboarding = settings.hasCompletedOnboarding
                 }
                 // ⚠️ Check daily reset when app enters foreground
-                .onChange(of: scenePhase) { oldPhase, newPhase in
+                .onChange(of: scenePhase) { newPhase in
                     if newPhase == .active {
                         // Dashboard will handle actual reset check via its ViewModel
                         // This establishes the pattern for foreground monitoring
@@ -32,12 +32,18 @@ struct ClepsyApp: App {
 
 struct ContentView: View {
     @Binding var hasCompletedOnboarding: Bool
+    @State private var showCelebration = false
 
     var body: some View {
         if hasCompletedOnboarding {
-            DashboardView()
+            DashboardView(showCelebration: $showCelebration)
         } else {
             OnboardingContainerView(hasCompletedOnboarding: $hasCompletedOnboarding)
+                .onChange(of: hasCompletedOnboarding) { completed in
+                    if completed {
+                        showCelebration = true
+                    }
+                }
         }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-class PersistenceService {
+class PersistenceService: ObservableObject {
     private let userDefaults: UserDefaults
 
     private enum Keys {
