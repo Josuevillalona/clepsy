@@ -1,148 +1,132 @@
 import SwiftUI
 
 /// Shield view shown when user attempts to open a blocked app
-/// Note: In production, this would be shown via ManagedSettings ShieldConfiguration extension
-/// This view serves as a preview and for app-based shield presentation
 struct ShieldConfigurationView: View {
     @ObservedObject var viewModel: DashboardViewModel
     let appName: String
-    let appBundleId: String
     let onUnlock: () -> Void
     let onEarnTime: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ZStack {
+            Color.clepsyMidnight.ignoresSafeArea()
 
-            // Clepsy character showing current balance
-            ClepsyCharacterView(
-                balancePercentage: min(viewModel.balancePercentage, 1.0),
-                expression: .patient
-            )
-            .scaleEffect(0.7)
+            VStack(spacing: ClepsySpacing.md) {
+                Spacer()
 
-            // Lock message
-            VStack(spacing: 8) {
-                Text("\(appName) is locked")
-                    .font(.title)
-                    .fontWeight(.bold)
+                // Clepsy character
+                ClepsyCharacterView(
+                    balancePercentage: min(viewModel.balancePercentage, 1.0),
+                    expression: .patient
+                )
+                .scaleEffect(0.55)
+                .frame(height: 160)
 
-                Text("Earn time with productive apps to unlock")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+                // Lock message
+                VStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.clepsyOrange)
 
-            // Balance info card
-            VStack(spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Your Balance")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text(viewModel.formattedBalance)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.purple)
-                    }
+                    Text("\(appName) is locked")
+                        .font(.clepsyTitle)
+                        .foregroundColor(.clepsyTextPrimary)
 
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Exchange Rate")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("1:1")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.orange)
-                    }
+                    Text("Earn time with productive apps to unlock")
+                        .font(.clepsySubheadline)
+                        .foregroundColor(.clepsyTextSecondary)
                 }
 
-                Divider()
-
-                HStack {
-                    Text("Earned today:")
-                    Spacer()
-                    Text("\(viewModel.todayEarned / 60) min")
-                        .foregroundColor(.green)
-                }
-                .font(.subheadline)
-            }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(16)
-            .padding(.horizontal, 24)
-
-            Spacer()
-
-            // Action buttons
-            VStack(spacing: 12) {
-                if viewModel.currentBalance.currentSeconds > 0 {
-                    Button(action: {
-                        onUnlock()
-                        dismiss()
-                    }) {
-                        HStack {
-                            Image(systemName: "lock.open.fill")
-                            Text("Unlock \(appName)")
+                // Balance info card
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Your Balance")
+                                .font(.clepsyCaption)
+                                .foregroundColor(.clepsyTextSecondary)
+                            Text(viewModel.formattedBalance)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.clepsyGold)
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.purple)
-                        .cornerRadius(14)
-                    }
-                } else {
-                    Button(action: {
-                        onEarnTime()
-                        dismiss()
-                    }) {
-                        HStack {
-                            Image(systemName: "clock.badge.checkmark")
-                            Text("Earn Time Now")
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Earned Today")
+                                .font(.clepsyCaption)
+                                .foregroundColor(.clepsyTextSecondary)
+                            Text("\(viewModel.todayEarned / 60)m")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.clepsyTeal)
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green)
-                        .cornerRadius(14)
+                    }
+                }
+                .padding()
+                .background(Color.clepsySurface)
+                .cornerRadius(16)
+                .padding(.horizontal, ClepsySpacing.md)
+
+                Spacer()
+
+                // Action buttons
+                VStack(spacing: 12) {
+                    if viewModel.currentBalance.currentSeconds > 0 {
+                        let unlockMinutes = min(5, viewModel.currentBalance.currentSeconds / 60)
+
+                        Button(action: {
+                            onUnlock()
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "lock.open.fill")
+                                Text("Unlock for \(unlockMinutes)m")
+                            }
+                        }
+                        .buttonStyle(.clepsyPrimary)
+
+                        Text("This will deduct \(unlockMinutes)m from your balance")
+                            .font(.clepsyCaption)
+                            .foregroundColor(.clepsyTextSecondary)
+                    } else {
+                        Button(action: {
+                            onEarnTime()
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "clock.badge.checkmark")
+                                Text("Earn Time Now")
+                            }
+                        }
+                        .buttonStyle(.clepsyPrimary)
+
+                        Text("Use productive apps to earn unlock time")
+                            .font(.clepsyCaption)
+                            .foregroundColor(.clepsyTextSecondary)
                     }
 
-                    Text("Use productive apps to earn unlock time")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Button(action: { dismiss() }) {
+                        Text("Go Back")
+                            .font(.clepsySubheadline)
+                            .foregroundColor(.clepsyTextSecondary)
+                    }
+                    .padding(.top, 4)
                 }
-
-                Button(action: {
-                    dismiss()
-                }) {
-                    Text("Go Back")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.top, 8)
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.bottom, ClepsySpacing.lg)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 40)
         }
-        .background(Color(.systemBackground))
     }
 }
-
-// MARK: - Preview
 
 #Preview("With Balance") {
     ShieldConfigurationView(
         viewModel: {
             let vm = DashboardViewModel()
-            vm.addTime(seconds: 600) // 10 minutes
+            vm.addTime(seconds: 600)
             return vm
         }(),
         appName: "Instagram",
-        appBundleId: "com.burbn.instagram",
         onUnlock: {},
         onEarnTime: {}
     )
@@ -152,7 +136,6 @@ struct ShieldConfigurationView: View {
     ShieldConfigurationView(
         viewModel: DashboardViewModel(),
         appName: "TikTok",
-        appBundleId: "com.zhiliaoapp.musically",
         onUnlock: {},
         onEarnTime: {}
     )

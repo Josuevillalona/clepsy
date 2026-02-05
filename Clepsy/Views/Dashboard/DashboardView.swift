@@ -3,6 +3,8 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @State private var showSettings = false
+    @State private var showBlockScreen = false
+    @State private var blockAppName = "Instagram"
     @Binding var showCelebration: Bool
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
@@ -10,20 +12,20 @@ struct DashboardView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Brand background
                 Color.clepsyMidnight
                     .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: ClepsySpacing.md) {
-                        // Balance Hero Card
                         balanceHeroCard
-
-                        // Today's Stats
+                        if viewModel.showStreakBanner {
+                            streakBanner
+                        }
                         todayStatsSection
-
-                        // Quick Actions (test buttons for MVP)
-                        quickActionsSection
+                        goalProgressCard
+                        viceAppsSection
+                        productiveAppsSection
+                        testActionsSection
                     }
                     .padding(.horizontal, ClepsySpacing.md)
                     .padding(.bottom, ClepsySpacing.lg)
@@ -47,6 +49,18 @@ struct DashboardView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showBlockScreen) {
+                ShieldConfigurationView(
+                    viewModel: viewModel,
+                    appName: blockAppName,
+                    onUnlock: {
+                        viewModel.subtractTime(seconds: 300)
+                    },
+                    onEarnTime: {
+                        viewModel.addTime(seconds: 300)
+                    }
+                )
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -63,17 +77,35 @@ struct DashboardView: View {
     // MARK: - Balance Hero Card
 
     private var balanceHeroCard: some View {
-        VStack(spacing: ClepsySpacing.sm) {
-            // Clepsy Character
-            ClepsyCharacterView(
-                balancePercentage: min(viewModel.balancePercentage, 1.0),
-                expression: expressionForBalance
-            )
-            .scaleEffect(0.65)
-            .frame(height: 180)
+        VStack(spacing: 16) {
+            // Character with circular glow
+            ZStack {
+                // Radial glow
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.clepsyGold.opacity(0.15),
+                                Color.clepsyGold.opacity(0.05),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 40,
+                            endRadius: 120
+                        )
+                    )
+                    .frame(width: 240, height: 240)
 
-            // Balance Display
-            VStack(spacing: ClepsySpacing.xs) {
+                ClepsyCharacterView(
+                    balancePercentage: min(viewModel.goalProgressPercentage, 1.0),
+                    expression: expressionForBalance
+                )
+                .scaleEffect(0.7)
+                .frame(height: 200)
+            }
+
+            // Balance
+            VStack(spacing: 6) {
                 Text("YOUR BALANCE")
                     .font(.clepsyCaption)
                     .fontWeight(.semibold)
@@ -81,19 +113,84 @@ struct DashboardView: View {
                     .tracking(1.5)
 
                 Text(viewModel.formattedBalance)
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .foregroundColor(.clepsyGold)
-
-                Text("Available to spend")
-                    .font(.clepsySubheadline)
-                    .foregroundColor(.clepsyTextSecondary)
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundColor(.clepsyTextPrimary)
             }
+
+            // Earned / Spent inline
+            HStack(spacing: 0) {
+                VStack(spacing: 2) {
+                    Text(viewModel.formattedEarned)
+                        .font(.clepsyHeadline)
+                        .foregroundColor(.clepsyTeal)
+                    Text("EARNED")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.clepsyTextSecondary)
+                        .tracking(1)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle()
+                    .fill(Color.clepsyTextSecondary.opacity(0.3))
+                    .frame(width: 1, height: 30)
+
+                VStack(spacing: 2) {
+                    Text(viewModel.formattedSpent)
+                        .font(.clepsyHeadline)
+                        .foregroundColor(.clepsyOrange)
+                    Text("SPENT")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.clepsyTextSecondary)
+                        .tracking(1)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.bottom, 4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, ClepsySpacing.md)
         .padding(.horizontal, ClepsySpacing.sm)
         .background(Color.clepsySurface)
-        .cornerRadius(20)
+        .cornerRadius(24)
+    }
+
+    // MARK: - Streak Banner
+
+    private var streakBanner: some View {
+        HStack {
+            Text("🔥")
+                .font(.title2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(viewModel.currentStreak) Day Streak!")
+                    .font(.clepsyHeadline)
+                    .foregroundColor(.white)
+                Text(viewModel.streakMessage)
+                    .font(.clepsyCaption)
+                    .foregroundColor(.white.opacity(0.85))
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation { viewModel.dismissStreak() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 32, height: 32)
+            }
+        }
+        .padding()
+        .background(
+            LinearGradient(
+                colors: [.clepsyGold, .clepsyOrange],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .cornerRadius(16)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     // MARK: - Today's Stats
@@ -105,65 +202,240 @@ struct DashboardView: View {
                 .foregroundColor(.clepsyTextPrimary)
 
             HStack(spacing: ClepsySpacing.sm) {
-                // Earned Card
-                StatCard(
-                    title: "Time Earned",
-                    value: formatSeconds(viewModel.todayEarned),
-                    icon: "arrow.up.circle.fill",
-                    color: .clepsyTeal
+                // Earned
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(.clepsyTeal)
+                        Text("Time Earned")
+                            .font(.clepsyCaption)
+                            .foregroundColor(.clepsyTextSecondary)
+                    }
+                    Text(viewModel.formattedEarned)
+                        .font(.clepsyTitle2)
+                        .foregroundColor(.clepsyTextPrimary)
+                    Text("From \(viewModel.productiveApps.count) apps")
+                        .font(.system(size: 11))
+                        .foregroundColor(.clepsyTextSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color.clepsySurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.clepsyTeal.opacity(0.3), lineWidth: 1)
                 )
+                .cornerRadius(16)
 
-                // Spent Card
-                StatCard(
-                    title: "Time Spent",
-                    value: formatSeconds(viewModel.todaySpent),
-                    icon: "arrow.down.circle.fill",
-                    color: .clepsyOrange
+                // Spent
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.fill")
+                            .font(.caption)
+                            .foregroundColor(.clepsyOrange)
+                        Text("Time Spent")
+                            .font(.clepsyCaption)
+                            .foregroundColor(.clepsyTextSecondary)
+                    }
+                    Text(viewModel.formattedSpent)
+                        .font(.clepsyTitle2)
+                        .foregroundColor(.clepsyTextPrimary)
+                    Text(viewModel.viceApps.first.map { "On \($0.name)" } ?? "No apps")
+                        .font(.system(size: 11))
+                        .foregroundColor(.clepsyTextSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color.clepsySurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.clepsyOrange.opacity(0.3), lineWidth: 1)
                 )
+                .cornerRadius(16)
             }
         }
     }
 
-    // MARK: - Quick Actions
+    // MARK: - Goal Progress
 
-    private var quickActionsSection: some View {
+    private var goalProgressCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "target")
+                        .font(.caption)
+                        .foregroundColor(.clepsyTeal)
+                    Text("Daily Goal")
+                        .font(.clepsyHeadline)
+                        .foregroundColor(.clepsyTextPrimary)
+                }
+                Spacer()
+                Text("\(Int(viewModel.goalProgressPercentage * 100))%")
+                    .font(.clepsyHeadline)
+                    .foregroundColor(.clepsyGold)
+            }
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.clepsyMidnight)
+                        .frame(height: 10)
+
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(
+                            LinearGradient(
+                                colors: [.clepsyTeal, .clepsyGold],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(
+                            width: max(0, geometry.size.width * viewModel.goalProgressPercentage),
+                            height: 10
+                        )
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.goalProgressPercentage)
+                }
+            }
+            .frame(height: 10)
+
+            Text("\(viewModel.todayEarnedMinutes) of \(viewModel.dailyGoalMinutes) minutes earned today")
+                .font(.clepsyCaption)
+                .foregroundColor(.clepsyTextSecondary)
+        }
+        .padding()
+        .background(Color.clepsySurface)
+        .cornerRadius(20)
+    }
+
+    // MARK: - Vice Apps
+
+    private var viceAppsSection: some View {
         VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
-            Text("Quick Actions")
+            Text("Vice Apps")
                 .font(.clepsyHeadline)
                 .foregroundColor(.clepsyTextPrimary)
 
-            Button {
-                viewModel.addTime(seconds: 300)
-            } label: {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.clepsyTeal)
-                    Text("Add 5 minutes (test)")
-                        .foregroundColor(.clepsyTextPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.clepsyTextSecondary)
-                }
-                .padding()
-                .background(Color.clepsySurface)
-                .cornerRadius(12)
-            }
+            ForEach(viewModel.viceApps) { app in
+                Button {
+                    blockAppName = app.name
+                    showBlockScreen = true
+                } label: {
+                    HStack(spacing: 12) {
+                        AppIconView(bundleIdentifier: app.bundleIdentifier)
+                            .frame(width: 40, height: 40)
 
-            Button {
-                viewModel.subtractTime(seconds: 120)
-            } label: {
-                HStack {
-                    Image(systemName: "minus.circle.fill")
-                        .foregroundColor(.clepsyOrange)
-                    Text("Subtract 2 minutes (test)")
-                        .foregroundColor(.clepsyTextPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.clepsyTextSecondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.name)
+                                .font(.clepsyBody)
+                                .foregroundColor(.clepsyTextPrimary)
+                            Text("0 min today")
+                                .font(.clepsyCaption)
+                                .foregroundColor(.clepsyTextSecondary)
+                        }
+
+                        Spacer()
+
+                        Text("Vice")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.clepsyOrange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.clepsyOrange.opacity(0.15))
+                            .cornerRadius(8)
+                    }
+                    .padding()
+                    .background(Color.clepsySurface)
+                    .cornerRadius(16)
                 }
-                .padding()
-                .background(Color.clepsySurface)
-                .cornerRadius(12)
+            }
+        }
+    }
+
+    // MARK: - Productive Apps
+
+    private var productiveAppsSection: some View {
+        VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
+            Text("Productive Apps")
+                .font(.clepsyHeadline)
+                .foregroundColor(.clepsyTextPrimary)
+
+            ForEach(viewModel.productiveApps) { app in
+                Button {
+                    launchApp(bundleId: app.bundleIdentifier)
+                } label: {
+                    HStack(spacing: 12) {
+                        AppIconView(bundleIdentifier: app.bundleIdentifier)
+                            .frame(width: 40, height: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.name)
+                                .font(.clepsyBody)
+                                .foregroundColor(.clepsyTextPrimary)
+                            Text("0 min earned")
+                                .font(.clepsyCaption)
+                                .foregroundColor(.clepsyTextSecondary)
+                        }
+
+                        Spacer()
+
+                        Text("Productive")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.clepsyTeal)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.clepsyTeal.opacity(0.15))
+                            .cornerRadius(8)
+                    }
+                    .padding()
+                    .background(Color.clepsySurface)
+                    .cornerRadius(16)
+                }
+            }
+        }
+    }
+
+    // MARK: - Test Actions
+
+    private var testActionsSection: some View {
+        VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
+            Text("Test Actions")
+                .font(.clepsyCaption)
+                .foregroundColor(.clepsyTextSecondary)
+
+            HStack(spacing: ClepsySpacing.sm) {
+                Button {
+                    viewModel.addTime(seconds: 300)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.clepsyTeal)
+                        Text("+5 min")
+                            .font(.clepsyCaption)
+                            .foregroundColor(.clepsyTextPrimary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.clepsySurface)
+                    .cornerRadius(10)
+                }
+
+                Button {
+                    viewModel.subtractTime(seconds: 120)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundColor(viewModel.canSpend ? .clepsyOrange : .clepsyTextSecondary)
+                        Text("-2 min")
+                            .font(.clepsyCaption)
+                            .foregroundColor(viewModel.canSpend ? .clepsyTextPrimary : .clepsyTextSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.clepsySurface)
+                    .cornerRadius(10)
+                }
+                .disabled(!viewModel.canSpend)
             }
         }
     }
@@ -199,7 +471,6 @@ struct DashboardView: View {
                 celebrationOpacity = 1
                 celebrationScale = 1
             }
-            // Auto-dismiss after 2.5 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 withAnimation(.easeOut(duration: 0.4)) {
                     celebrationOpacity = 0
@@ -223,56 +494,21 @@ struct DashboardView: View {
 
     // MARK: - Helpers
 
+    private func launchApp(bundleId: String) {
+        if let url = URL(string: "app://\(bundleId)"),
+           UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        }
+    }
+
     private var expressionForBalance: ClepsyExpression {
-        if viewModel.balancePercentage > 0.6 {
+        if viewModel.goalProgressPercentage >= 1.0 {
             return .celebrating
-        } else if viewModel.balancePercentage > 0.2 {
+        } else if viewModel.goalProgressPercentage > 0.3 {
             return .encouraging
         } else {
             return .patient
         }
-    }
-
-    private func formatSeconds(_ seconds: Int) -> String {
-        let minutes = seconds / 60
-        if minutes == 0 {
-            return "0m"
-        } else if minutes < 60 {
-            return "\(minutes)m"
-        } else {
-            let hours = minutes / 60
-            let remainingMins = minutes % 60
-            return remainingMins > 0 ? "\(hours)h \(remainingMins)m" : "\(hours)h"
-        }
-    }
-}
-
-// MARK: - Stat Card
-
-struct StatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: ClepsySpacing.xs) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                Text(title)
-                    .font(.clepsyCaption)
-                    .foregroundColor(.clepsyTextSecondary)
-            }
-
-            Text(value)
-                .font(.clepsyTitle2)
-                .foregroundColor(.clepsyTextPrimary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color.clepsySurface)
-        .cornerRadius(16)
     }
 }
 
