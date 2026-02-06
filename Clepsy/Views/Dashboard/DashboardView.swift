@@ -8,12 +8,32 @@ struct DashboardView: View {
     @Binding var showCelebration: Bool
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
+    @State private var glowPulse = false
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.clepsyMidnight
-                    .ignoresSafeArea()
+        ZStack {
+            Color.clepsyMidnight
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Custom header
+                HStack {
+                    Text("Clepsy")
+                        .font(.clepsyHeadline)
+                        .foregroundColor(.clepsyTextPrimary)
+
+                    Spacer()
+
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.body)
+                            .foregroundColor(.clepsyGold)
+                    }
+                }
+                .padding(.horizontal, ClepsySpacing.md)
+                .padding(.vertical, ClepsySpacing.sm)
 
                 ScrollView {
                     VStack(spacing: ClepsySpacing.md) {
@@ -21,7 +41,6 @@ struct DashboardView: View {
                         if viewModel.showStreakBanner {
                             streakBanner
                         }
-                        todayStatsSection
                         goalProgressCard
                         viceAppsSection
                         productiveAppsSection
@@ -31,38 +50,23 @@ struct DashboardView: View {
                     .padding(.bottom, ClepsySpacing.lg)
                 }
             }
-            .navigationTitle("Clepsy")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.clepsyMidnight, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .foregroundColor(.clepsyGold)
-                    }
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showBlockScreen) {
-                ShieldConfigurationView(
-                    viewModel: viewModel,
-                    appName: blockAppName,
-                    onUnlock: {
-                        viewModel.subtractTime(seconds: 300)
-                    },
-                    onEarnTime: {
-                        viewModel.addTime(seconds: 300)
-                    }
-                )
-            }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $showBlockScreen) {
+            ShieldConfigurationView(
+                viewModel: viewModel,
+                appName: blockAppName,
+                onUnlock: {
+                    viewModel.subtractTime(seconds: 300)
+                },
+                onEarnTime: {
+                    viewModel.addTime(seconds: 300)
+                }
+            )
+        }
         .onAppear {
             viewModel.checkAndPerformDailyReset()
             viewModel.refreshGoal()
@@ -78,15 +82,15 @@ struct DashboardView: View {
 
     private var balanceHeroCard: some View {
         VStack(spacing: 16) {
-            // Character with circular glow
+            // Character with pulsing glow
             ZStack {
-                // Radial glow
+                // Pulsing radial glow
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color.clepsyGold.opacity(0.15),
-                                Color.clepsyGold.opacity(0.05),
+                                Color.clepsyGold.opacity(glowPulse ? 0.2 : 0.1),
+                                Color.clepsyGold.opacity(glowPulse ? 0.08 : 0.03),
                                 Color.clear
                             ],
                             center: .center,
@@ -94,14 +98,23 @@ struct DashboardView: View {
                             endRadius: 120
                         )
                     )
-                    .frame(width: 240, height: 240)
+                    .frame(width: 180, height: 180)
+                    .scaleEffect(glowPulse ? 1.08 : 1.0)
 
                 ClepsyCharacterView(
-                    balancePercentage: min(viewModel.goalProgressPercentage, 1.0),
+                    balancePercentage: min(viewModel.balancePercentage, 1.0),
                     expression: expressionForBalance
                 )
-                .scaleEffect(0.7)
-                .frame(height: 200)
+                .scaleEffect(0.525)
+                .frame(height: 150)
+            }
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: 3.0)
+                    .repeatForever(autoreverses: true)
+                ) {
+                    glowPulse = true
+                }
             }
 
             // Balance
@@ -191,70 +204,6 @@ struct DashboardView: View {
         )
         .cornerRadius(16)
         .transition(.move(edge: .top).combined(with: .opacity))
-    }
-
-    // MARK: - Today's Stats
-
-    private var todayStatsSection: some View {
-        VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
-            Text("Today's Stats")
-                .font(.clepsyHeadline)
-                .foregroundColor(.clepsyTextPrimary)
-
-            HStack(spacing: ClepsySpacing.sm) {
-                // Earned
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.up.right")
-                            .font(.caption)
-                            .foregroundColor(.clepsyTeal)
-                        Text("Time Earned")
-                            .font(.clepsyCaption)
-                            .foregroundColor(.clepsyTextSecondary)
-                    }
-                    Text(viewModel.formattedEarned)
-                        .font(.clepsyTitle2)
-                        .foregroundColor(.clepsyTextPrimary)
-                    Text("From \(viewModel.productiveApps.count) apps")
-                        .font(.system(size: 11))
-                        .foregroundColor(.clepsyTextSecondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(Color.clepsySurface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.clepsyTeal.opacity(0.3), lineWidth: 1)
-                )
-                .cornerRadius(16)
-
-                // Spent
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.fill")
-                            .font(.caption)
-                            .foregroundColor(.clepsyOrange)
-                        Text("Time Spent")
-                            .font(.clepsyCaption)
-                            .foregroundColor(.clepsyTextSecondary)
-                    }
-                    Text(viewModel.formattedSpent)
-                        .font(.clepsyTitle2)
-                        .foregroundColor(.clepsyTextPrimary)
-                    Text(viewModel.viceApps.first.map { "On \($0.name)" } ?? "No apps")
-                        .font(.system(size: 11))
-                        .foregroundColor(.clepsyTextSecondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(Color.clepsySurface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.clepsyOrange.opacity(0.3), lineWidth: 1)
-                )
-                .cornerRadius(16)
-            }
-        }
     }
 
     // MARK: - Goal Progress
