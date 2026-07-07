@@ -4,9 +4,10 @@ import SwiftUI
 struct ClepsyApp: App {
     @StateObject private var persistenceService = PersistenceService()
     @State private var hasCompletedOnboarding = false
-
-    // ⚠️ Scene phase observer for daily reset
     @Environment(\.scenePhase) var scenePhase
+
+    private let blockingService = AppBlockingService()
+    @StateObject private var usageTrackingService = UsageTrackingService()
 
     var body: some Scene {
         WindowGroup {
@@ -14,12 +15,17 @@ struct ClepsyApp: App {
                 .onAppear {
                     let settings = persistenceService.loadUserSettings()
                     hasCompletedOnboarding = settings.hasCompletedOnboarding
+                    if hasCompletedOnboarding {
+                        reapplyBlocksIfNeeded()
+                        startDailyMonitoring()
+                    }
                 }
-                // ⚠️ Check daily reset when app enters foreground
                 .onChange(of: scenePhase) { newPhase in
                     if newPhase == .active {
-                        // Dashboard will handle actual reset check via its ViewModel
-                        // This establishes the pattern for foreground monitoring
+                        if hasCompletedOnboarding {
+                            reapplyBlocksIfNeeded()
+                            startDailyMonitoring()
+                        }
                         NotificationCenter.default.post(
                             name: NSNotification.Name("AppDidBecomeActive"),
                             object: nil
@@ -27,6 +33,18 @@ struct ClepsyApp: App {
                     }
                 }
         }
+    }
+
+    private func startDailyMonitoring() {
+        let productive = persistenceService.loadProductiveSelection()
+        usageTrackingService.startDailyMonitoring(productiveSelection: productive)
+    }
+
+    /// Re-applies shields unless a paid unlock window is still running —
+    /// otherwise foregrounding Clepsy would cut the unlock short.
+    private func reapplyBlocksIfNeeded() {
+        guard !SharedStorageService().isUnlockActive else { return }
+        blockingService.applyViceAppBlocks()
     }
 }
 

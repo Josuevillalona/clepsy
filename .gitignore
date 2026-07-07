@@ -116,3 +116,6 @@ $RECYCLE.BIN/
 
 # Claude Code
 .claude/
+
+# XcodeGen generated files
+Generated-Info.plist

@@ -1,13 +1,17 @@
 import Foundation
 import SwiftUI
+import FamilyControls
 
 @MainActor
 class OnboardingViewModel: ObservableObject {
     @Published var currentStep: Int = 0
     @Published var hasCompletedOnboarding: Bool = false
+    @Published var viceSelection = FamilyActivitySelection()
+    @Published var productiveSelection = FamilyActivitySelection()
 
     private let persistenceService: PersistenceService
     private let screenTimeService: ScreenTimeService
+    private let blockingService: AppBlockingService
 
     let totalSteps = 5
 
@@ -17,6 +21,7 @@ class OnboardingViewModel: ObservableObject {
     ) {
         self.persistenceService = persistenceService
         self.screenTimeService = screenTimeService
+        self.blockingService = AppBlockingService(persistenceService: persistenceService)
 
         let settings = persistenceService.loadUserSettings()
         self.hasCompletedOnboarding = settings.hasCompletedOnboarding
@@ -35,6 +40,10 @@ class OnboardingViewModel: ObservableObject {
     }
 
     func completeOnboarding() {
+        persistenceService.saveViceSelection(viceSelection)
+        persistenceService.saveProductiveSelection(productiveSelection)
+        blockingService.applyViceAppBlocks()
+
         var settings = persistenceService.loadUserSettings()
         settings.hasCompletedOnboarding = true
         persistenceService.saveUserSettings(settings)

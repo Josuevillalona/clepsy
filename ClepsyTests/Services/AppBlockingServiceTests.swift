@@ -5,49 +5,27 @@ import ManagedSettings
 
 final class AppBlockingServiceTests: XCTestCase {
     var sut: AppBlockingService!
+    var persistenceService: PersistenceService!
 
     override func setUp() {
         super.setUp()
-        sut = AppBlockingService()
+        persistenceService = PersistenceService()
+        sut = AppBlockingService(persistenceService: persistenceService)
     }
 
-    func testBlockAppsInterface() {
-        let apps = AppCategory.defaultViceApps
-        // This will not actually block apps in test environment
-        // but verifies the interface is correct
-        do {
-            try sut.blockApps(apps)
-            XCTAssertTrue(true)
-        } catch {
-            XCTFail("blockApps should not throw: \(error)")
-        }
+    func testHasViceSelectionFalseWhenEmpty() {
+        persistenceService.saveViceSelection(FamilyActivitySelection())
+        XCTAssertFalse(sut.hasViceSelection)
     }
 
-    func testUnblockAppsInterface() {
-        let apps = AppCategory.defaultViceApps
-        do {
-            try sut.unblockApps(apps)
-            XCTAssertTrue(true)
-        } catch {
-            XCTFail("unblockApps should not throw: \(error)")
-        }
+    func testApplyViceAppBlocksDoesNotCrashWithEmptySelection() {
+        // Shields can't actually be applied in the test environment, but the
+        // call should be safe with nothing selected
+        persistenceService.saveViceSelection(FamilyActivitySelection())
+        sut.applyViceAppBlocks()
     }
 
-    func testBlockAllViceApps() {
-        do {
-            try sut.blockAllViceApps()
-            XCTAssertTrue(true)
-        } catch {
-            XCTFail("blockAllViceApps should not throw: \(error)")
-        }
-    }
-
-    func testUnblockAllViceApps() {
-        do {
-            try sut.unblockAllViceApps()
-            XCTAssertTrue(true)
-        } catch {
-            XCTFail("unblockAllViceApps should not throw: \(error)")
-        }
+    func testRemoveAllBlocksDoesNotCrash() {
+        sut.removeAllBlocks()
     }
 }

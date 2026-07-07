@@ -24,12 +24,22 @@ struct ClepsyCharacterView: View {
                 .scaleEffect(breathingScale)
 
             // Layer 2: The Face (Expression)
-            Image(faceImageName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 145, height: 120)
-                .offset(y: 40 + faceYOffset)
-                .scaleEffect(faceScale)
+            if expression == .celebrating {
+                // Celebrating uses full face image
+                Image(faceImageName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 145, height: 120)
+                    .offset(y: 40 + faceYOffset)
+                    .scaleEffect(faceScale)
+            } else {
+                // Patient/Encouraging use programmatic eyes + mouth image
+                programmaticFace
+                    .scaleEffect(1.8)
+                    .frame(width: 145, height: 120)
+                    .offset(y: 50 + faceYOffset)
+                    .scaleEffect(faceScale)
+            }
 
             // Layer 3: Sparkle particles (celebrating only)
             if expression == .celebrating {
@@ -187,6 +197,51 @@ struct ClepsyCharacterView: View {
         .frame(width: 240, height: 320)
     }
 
+    // MARK: - Programmatic Face
+
+    private var programmaticFace: some View {
+        ZStack {
+            // Eyes
+            ClepsyEyesView()
+                .offset(y: -5)
+
+            // Mouth image
+            Image(mouthImageName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: mouthWidth, height: mouthHeight)
+                .offset(y: 0)
+        }
+        .frame(width: 100, height: 80)
+    }
+
+    private var mouthImageName: String {
+        switch expression {
+        case .patient:
+            return "patience_mouth"
+        case .encouraging, .celebrating:
+            return "encouraging_mouth"
+        }
+    }
+
+    private var mouthWidth: CGFloat {
+        switch expression {
+        case .patient:
+            return 20
+        case .encouraging, .celebrating:
+            return 28
+        }
+    }
+
+    private var mouthHeight: CGFloat {
+        switch expression {
+        case .patient:
+            return 14
+        case .encouraging, .celebrating:
+            return 20
+        }
+    }
+
     // MARK: - Asset Selection
 
     private var bodyImageName: String {
@@ -303,21 +358,21 @@ enum ClepsyExpression {
                 .scaleEffect(0.4)
             Text("Patient")
                 .font(.caption)
-                .foregroundColor(.white)
+                .foregroundColor(.clepsyTextPrimary)
         }
         VStack {
             ClepsyCharacterView(balancePercentage: 0.5, expression: .encouraging)
                 .scaleEffect(0.4)
             Text("Encouraging")
                 .font(.caption)
-                .foregroundColor(.white)
+                .foregroundColor(.clepsyTextPrimary)
         }
         VStack {
             ClepsyCharacterView(balancePercentage: 1.0, expression: .celebrating)
                 .scaleEffect(0.4)
             Text("Celebrating")
                 .font(.caption)
-                .foregroundColor(.white)
+                .foregroundColor(.clepsyTextPrimary)
         }
     }
     .padding()

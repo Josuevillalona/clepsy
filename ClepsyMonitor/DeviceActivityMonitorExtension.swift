@@ -1,5 +1,7 @@
 import DeviceActivity
+import FamilyControls
 import Foundation
+import ManagedSettings
 
 /// DeviceActivityMonitor extension that runs in a separate process
 /// to track app usage even when Clepsy is not running
@@ -19,8 +21,54 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
 
-        // Called when monitoring interval ends (e.g., end of day)
-        print("ClepsyMonitor: Interval ended for \(activity.rawValue)")
+        if activity == .unlockWindow {
+            reapplyViceShields()
+        } else if activity.rawValue.hasPrefix("unlock_") {
+            relockApp(activityName: activity.rawValue)
+        }
+    }
+
+    /// Re-shields a single app whose per-app unlock window just ended.
+    private func relockApp(activityName: String) {
+        defer { sharedStorage.removeUnlock(activityName: activityName) }
+
+        guard let tokenData = sharedStorage.unlockTokenData(for: activityName),
+              let token = try? JSONDecoder().decode(ApplicationToken.self, from: tokenData) else {
+            // Registry entry missing — fall back to a full re-shield, which
+            // still skips apps inside their own unlock windows
+            reapplyViceShields()
+            return
+        }
+
+        // Skip if the user removed this app from their vice selection mid-window
+        if let selection = sharedStorage.loadViceSelection(),
+           !selection.applicationTokens.contains(token) {
+            return
+        }
+
+        let store = ManagedSettingsStore()
+        var shielded = store.shield.applications ?? []
+        shielded.insert(token)
+        store.shield.applications = shielded
+    }
+
+    private func reapplyViceShields() {
+        sharedStorage.saveUnlockExpiry(nil)
+        guard let selection = sharedStorage.loadViceSelection() else { return }
+
+        // Don't cut short apps still inside their own per-app unlock window
+        var tokens = selection.applicationTokens
+        for data in sharedStorage.activeUnlockTokenDatas() {
+            if let token = try? JSONDecoder().decode(ApplicationToken.self, from: data) {
+                tokens.remove(token)
+            }
+        }
+
+        let store = ManagedSettingsStore()
+        store.shield.applications = tokens.isEmpty ? nil : tokens
+        if !selection.categoryTokens.isEmpty {
+            store.shield.applicationCategories = .specific(selection.categoryTokens)
+        }
     }
 
     // MARK: - Threshold Events
@@ -59,11 +107,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     private func handleProductiveAppEvent(_ event: DeviceActivityEvent.Name) {
-        // User spent time in a productive app - they earn time
-        // The event name contains encoded info about the duration
-
-        // Create earning event (5 minutes = 300 seconds per threshold)
-        let earnedSeconds = 300 // 5-minute update intervals
+        // Thresholds are spaced 1 minute apart, so each firing = 1 minute earned
+        let earnedSeconds = 60
         let timeEvent = TimeEvent(
             seconds: earnedSeconds,
             timestamp: Date(),
@@ -104,5 +149,6 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
-    static let viceApps = DeviceActivityName("viceApps")
+    static let viceApps       = DeviceActivityName("viceApps")
+    static let unlockWindow   = DeviceActivityName("unlockWindow")
 }

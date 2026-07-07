@@ -1,8 +1,11 @@
 import SwiftUI
+import FamilyControls
 
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @Environment(\.dismiss) private var dismiss
+    @State private var showVicePicker = false
+    @State private var showProductivePicker = false
 
     var body: some View {
         NavigationStack {
@@ -27,40 +30,38 @@ struct SettingsView: View {
 
                 // Section 2: Vice Apps
                 Section("Vice Apps") {
-                    NavigationLink {
-                        SettingsAppSelectionView(
-                            title: "Vice Apps",
-                            subtitle: "Select apps you want to block",
-                            apps: $viewModel.viceApps,
-                            category: .vice
-                        )
+                    Button {
+                        showVicePicker = true
                     } label: {
                         HStack {
                             Label("Manage vice apps", systemImage: "iphone")
                             Spacer()
-                            Text("\(viewModel.selectedViceAppsCount) selected")
+                            Text(viewModel.viceAppCount == 0 ? "None" : "\(viewModel.viceAppCount) selected")
+                                .foregroundColor(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .foregroundColor(.primary)
                 }
 
                 // Section 3: Productive Apps
                 Section("Productive Apps") {
-                    NavigationLink {
-                        SettingsAppSelectionView(
-                            title: "Productive Apps",
-                            subtitle: "Select apps that earn you time",
-                            apps: $viewModel.productiveApps,
-                            category: .productive
-                        )
+                    Button {
+                        showProductivePicker = true
                     } label: {
                         HStack {
                             Label("Manage productive apps", systemImage: "checkmark.circle")
                             Spacer()
-                            Text("\(viewModel.selectedProductiveAppsCount) selected")
+                            Text(viewModel.productiveAppCount == 0 ? "None" : "\(viewModel.productiveAppCount) selected")
+                                .foregroundColor(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .foregroundColor(.primary)
                 }
 
                 // Section 4: Notifications
@@ -177,6 +178,13 @@ struct SettingsView: View {
                 }
             } message: {
                 Text("This will delete all your progress, settings, and start fresh. This cannot be undone.")
+            }
+            .familyActivityPicker(isPresented: $showVicePicker, selection: $viewModel.viceSelection)
+            .familyActivityPicker(isPresented: $showProductivePicker, selection: $viewModel.productiveSelection)
+            .alert("Pick specific apps", isPresented: $viewModel.showCategoryWarning) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Whole categories aren't supported. Open a category in the picker and select individual apps — your change wasn't saved.")
             }
         }
     }

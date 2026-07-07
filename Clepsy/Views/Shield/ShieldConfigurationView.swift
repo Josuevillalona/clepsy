@@ -75,7 +75,7 @@ struct ShieldConfigurationView: View {
                         let unlockMinutes = min(5, viewModel.currentBalance.currentSeconds / 60)
 
                         Button(action: {
-                            onUnlock()
+                            viewModel.unlockViceApps(seconds: unlockMinutes * 60)
                             dismiss()
                         }) {
                             HStack {

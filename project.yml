@@ -28,30 +28,34 @@ targets:
         NSFamilyControlsUsageDescription: "Clepsy needs permission to monitor app usage and manage screen time to help you trade productive time for social media access."
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.clepsy.app
+            CFBundleURLSchemes:
+              - clepsy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.clepsy.app
-        # CODE_SIGN_ENTITLEMENTS: Clepsy/Clepsy.entitlements
+        CODE_SIGN_ENTITLEMENTS: Clepsy/Clepsy.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - sdk: FamilyControls.framework
       - sdk: ManagedSettings.framework
       - sdk: DeviceActivity.framework
-      # ClepsyMonitor extension disabled for simulator testing
-      # Uncomment when testing on physical device with paid developer account
-      # - target: ClepsyMonitor
-      #   embed: true
+      - target: ClepsyMonitor
+        embed: true
+      - target: ClepsyShieldConfiguration
+        embed: true
+      - target: ClepsyShieldAction
+        embed: true
     scheme:
       testTargets:
         - ClepsyTests
-    # Entitlements disabled for simulator testing (requires paid developer account)
-    # Uncomment when testing on physical device:
-    # entitlements:
-    #   path: Clepsy/Clepsy.entitlements
-    #   properties:
-    #     com.apple.developer.family-controls: true
-    #     com.apple.security.application-groups:
-    #       - group.com.clepsy.shared
+    entitlements:
+      path: Clepsy/Clepsy.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.clepsy.shared
 
   ClepsyMonitor:
     type: app-extension
@@ -68,7 +72,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
-          NSExtensionPointIdentifier: com.apple.deviceactivitymonitor
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
           NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).DeviceActivityMonitorExtension"
     settings:
       base:
@@ -77,8 +81,74 @@ targets:
         SKIP_INSTALL: YES
     dependencies:
       - sdk: DeviceActivity.framework
+      - sdk: ManagedSettings.framework
+      - sdk: FamilyControls.framework
     entitlements:
       path: ClepsyMonitor/ClepsyMonitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.clepsy.shared
+
+  ClepsyShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ClepsyShieldConfiguration
+      - path: Clepsy/Models/TimeEvent.swift
+      - path: Clepsy/Services/SharedStorageService.swift
+    info:
+      path: ClepsyShieldConfiguration/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: ClepsyShieldConfiguration
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShieldConfigurationExtension"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clepsy.app.shieldconfiguration
+        CODE_SIGN_ENTITLEMENTS: ClepsyShieldConfiguration/ClepsyShieldConfiguration.entitlements
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: ManagedSettings.framework
+      - sdk: ManagedSettingsUI.framework
+      - sdk: FamilyControls.framework
+    entitlements:
+      path: ClepsyShieldConfiguration/ClepsyShieldConfiguration.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.clepsy.shared
+
+  ClepsyShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ClepsyShieldAction
+      - path: Clepsy/Models/TimeEvent.swift
+      - path: Clepsy/Services/SharedStorageService.swift
+    info:
+      path: ClepsyShieldAction/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: ClepsyShieldAction
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShieldActionExtension"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clepsy.app.shieldaction
+        CODE_SIGN_ENTITLEMENTS: ClepsyShieldAction/ClepsyShieldAction.entitlements
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: ManagedSettings.framework
+      - sdk: FamilyControls.framework
+      - sdk: DeviceActivity.framework
+    entitlements:
+      path: ClepsyShieldAction/ClepsyShieldAction.entitlements
       properties:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:

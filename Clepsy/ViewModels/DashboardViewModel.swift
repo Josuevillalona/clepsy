@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import FamilyControls
 
 @MainActor
 class DashboardViewModel: ObservableObject {
@@ -9,18 +10,25 @@ class DashboardViewModel: ObservableObject {
     @Published var dailyGoalSeconds: Int = 1800
     @Published var viceApps: [TrackedApp] = []
     @Published var productiveApps: [TrackedApp] = []
+    @Published var viceSelection = FamilyActivitySelection()
+    @Published var productiveSelection = FamilyActivitySelection()
     @Published var currentStreak: Int = 0
     @Published var showStreakBanner: Bool = false
 
     private let persistenceService: PersistenceService
+    private let blockingService: AppBlockingService
+    private let usageTrackingService = UsageTrackingService()
 
     init(persistenceService: PersistenceService = PersistenceService()) {
         self.persistenceService = persistenceService
+        self.blockingService = AppBlockingService(persistenceService: persistenceService)
         self.currentBalance = persistenceService.loadTimeBalance()
         let settings = persistenceService.loadUserSettings()
         self.dailyGoalSeconds = settings.dailyGoalMinutes * 60
         self.viceApps = settings.viceApps.isEmpty ? AppCategory.defaultViceApps : settings.viceApps
         self.productiveApps = settings.productiveApps.isEmpty ? AppCategory.defaultProductiveApps : settings.productiveApps
+        self.viceSelection = persistenceService.loadViceSelection()
+        self.productiveSelection = persistenceService.loadProductiveSelection()
         loadStreak()
     }
 
@@ -41,6 +49,13 @@ class DashboardViewModel: ObservableObject {
         currentBalance.subtract(seconds: actualSubtracted)
         todaySpent += actualSubtracted
         persistenceService.saveTimeBalance(currentBalance)
+    }
+
+    /// Deducts balance, removes shields, and schedules automatic re-shielding when the window expires.
+    func unlockViceApps(seconds: Int) {
+        subtractTime(seconds: seconds)
+        blockingService.removeAllBlocks()
+        usageTrackingService.startUnlockWindow(seconds: seconds)
     }
 
     var canSpend: Bool {
@@ -101,11 +116,17 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
+    func syncPendingEvents() {
+        usageTrackingService.syncPendingEvents(to: self)
+    }
+
     func refreshGoal() {
         let settings = persistenceService.loadUserSettings()
         dailyGoalSeconds = settings.dailyGoalMinutes * 60
         viceApps = settings.viceApps.isEmpty ? AppCategory.defaultViceApps : settings.viceApps
         productiveApps = settings.productiveApps.isEmpty ? AppCategory.defaultProductiveApps : settings.productiveApps
+        viceSelection = persistenceService.loadViceSelection()
+        productiveSelection = persistenceService.loadProductiveSelection()
     }
 
     func dismissStreak() {

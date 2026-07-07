@@ -27,12 +27,14 @@ struct OnboardingContainerView: View {
                 case 2:
                     ViceAppSelectionView(
                         onContinue: viewModel.nextStep,
-                        onBack: viewModel.previousStep
+                        onBack: viewModel.previousStep,
+                        selection: $viewModel.viceSelection
                     )
                 case 3:
                     ProductiveAppSelectionView(
                         onContinue: viewModel.nextStep,
-                        onBack: viewModel.previousStep
+                        onBack: viewModel.previousStep,
+                        selection: $viewModel.productiveSelection
                     )
                 case 4:
                     DailyGoalView(

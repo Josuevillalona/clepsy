@@ -1,9 +1,9 @@
 import Foundation
 import SwiftUI
+import FamilyControls
 
 @MainActor
 class SettingsViewModel: ObservableObject {
-    // MARK: - Published Properties
 
     @Published var dailyGoalMinutes: Int = 30 {
         didSet { saveSettings() }
@@ -17,18 +17,45 @@ class SettingsViewModel: ObservableObject {
         didSet { saveSettings() }
     }
 
-    @Published var viceApps: [SelectableApp] = []
-    @Published var productiveApps: [SelectableApp] = []
+    @Published var viceSelection = FamilyActivitySelection() {
+        didSet {
+            guard !isLoading else { return }
+            // Apps-only rule: category selections can't be unlocked per-app,
+            // so don't persist them — warn and let the user re-pick
+            guard viceSelection.categoryTokens.isEmpty else {
+                showCategoryWarning = true
+                return
+            }
+            persistenceService.saveViceSelection(viceSelection)
+        }
+    }
+
+    @Published var productiveSelection = FamilyActivitySelection() {
+        didSet {
+            guard !isLoading else { return }
+            guard productiveSelection.categoryTokens.isEmpty else {
+                showCategoryWarning = true
+                return
+            }
+            persistenceService.saveProductiveSelection(productiveSelection)
+            // Rebuild the earning schedule with the new app tokens
+            usageTrackingService.startDailyMonitoring(productiveSelection: productiveSelection, force: true)
+        }
+    }
+
+    private var isLoading = false
 
     // MARK: - UI State
 
     @Published var showGoalPicker = false
     @Published var showIntervalPicker = false
     @Published var showResetConfirmation = false
+    @Published var showCategoryWarning = false
 
     // MARK: - Services
 
     private let persistenceService: PersistenceService
+    private let usageTrackingService = UsageTrackingService()
 
     // MARK: - Computed Properties
 
@@ -52,12 +79,12 @@ class SettingsViewModel: ObservableObject {
         }
     }
 
-    var selectedViceAppsCount: Int {
-        viceApps.filter { $0.isSelected }.count
+    var viceAppCount: Int {
+        viceSelection.applicationTokens.count + viceSelection.categoryTokens.count
     }
 
-    var selectedProductiveAppsCount: Int {
-        productiveApps.filter { $0.isSelected }.count
+    var productiveAppCount: Int {
+        productiveSelection.applicationTokens.count + productiveSelection.categoryTokens.count
     }
 
     var appVersion: String {
@@ -76,62 +103,28 @@ class SettingsViewModel: ObservableObject {
     // MARK: - Settings Management
 
     private func loadSettings() {
+        isLoading = true
+        defer { isLoading = false }
         let settings = persistenceService.loadUserSettings()
         dailyGoalMinutes = settings.dailyGoalMinutes
         notificationsEnabled = settings.notificationsEnabled
-
-        // Load default apps with selection state
-        let savedViceIds = Set(settings.viceApps.map { $0.bundleIdentifier })
-        let savedProductiveIds = Set(settings.productiveApps.map { $0.bundleIdentifier })
-
-        viceApps = AppCategory.defaultViceApps.map { app in
-            SelectableApp(
-                trackedApp: app,
-                isSelected: savedViceIds.isEmpty ? true : savedViceIds.contains(app.bundleIdentifier)
-            )
-        }
-
-        productiveApps = AppCategory.defaultProductiveApps.map { app in
-            SelectableApp(
-                trackedApp: app,
-                isSelected: savedProductiveIds.isEmpty ? true : savedProductiveIds.contains(app.bundleIdentifier)
-            )
-        }
+        viceSelection = persistenceService.loadViceSelection()
+        productiveSelection = persistenceService.loadProductiveSelection()
     }
 
     private func saveSettings() {
         var settings = persistenceService.loadUserSettings()
         settings.dailyGoalMinutes = dailyGoalMinutes
         settings.notificationsEnabled = notificationsEnabled
-        settings.viceApps = viceApps.filter { $0.isSelected }.map { $0.trackedApp }
-        settings.productiveApps = productiveApps.filter { $0.isSelected }.map { $0.trackedApp }
         persistenceService.saveUserSettings(settings)
     }
 
     func resetAllData() {
         persistenceService.clearAll()
-        loadSettings()
-
-        // Reset to defaults
         dailyGoalMinutes = 30
         notificationsEnabled = true
         milestoneInterval = 15
+        viceSelection = FamilyActivitySelection()
+        productiveSelection = FamilyActivitySelection()
     }
-}
-
-// MARK: - Selectable App Model
-
-struct SelectableApp: Identifiable {
-    let id: UUID
-    let trackedApp: TrackedApp
-    var isSelected: Bool
-
-    init(trackedApp: TrackedApp, isSelected: Bool = false) {
-        self.id = trackedApp.id
-        self.trackedApp = trackedApp
-        self.isSelected = isSelected
-    }
-
-    var name: String { trackedApp.name }
-    var bundleIdentifier: String { trackedApp.bundleIdentifier }
 }

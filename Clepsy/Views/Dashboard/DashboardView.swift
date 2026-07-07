@@ -1,10 +1,10 @@
 import SwiftUI
+import FamilyControls
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
-    @State private var showBlockScreen = false
-    @State private var blockAppName = "Instagram"
     @Binding var showCelebration: Bool
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
@@ -55,21 +55,15 @@ struct DashboardView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
-        .sheet(isPresented: $showBlockScreen) {
-            ShieldConfigurationView(
-                viewModel: viewModel,
-                appName: blockAppName,
-                onUnlock: {
-                    viewModel.subtractTime(seconds: 300)
-                },
-                onEarnTime: {
-                    viewModel.addTime(seconds: 300)
-                }
-            )
-        }
         .onAppear {
             viewModel.checkAndPerformDailyReset()
             viewModel.refreshGoal()
+            viewModel.syncPendingEvents()
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                viewModel.syncPendingEvents()
+            }
         }
         .overlay {
             if showCelebration {
@@ -177,10 +171,10 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(viewModel.currentStreak) Day Streak!")
                     .font(.clepsyHeadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.clepsyTextPrimary)
                 Text(viewModel.streakMessage)
                     .font(.clepsyCaption)
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(.clepsyTextPrimary.opacity(0.85))
             }
 
             Spacer()
@@ -190,7 +184,7 @@ struct DashboardView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.clepsyTextPrimary.opacity(0.7))
                     .frame(width: 32, height: 32)
             }
         }
@@ -260,88 +254,77 @@ struct DashboardView: View {
     // MARK: - Vice Apps
 
     private var viceAppsSection: some View {
-        VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
-            Text("Vice Apps")
-                .font(.clepsyHeadline)
-                .foregroundColor(.clepsyTextPrimary)
-
-            ForEach(viewModel.viceApps) { app in
-                Button {
-                    blockAppName = app.name
-                    showBlockScreen = true
-                } label: {
-                    HStack(spacing: 12) {
-                        AppIconView(bundleIdentifier: app.bundleIdentifier)
-                            .frame(width: 40, height: 40)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.name)
-                                .font(.clepsyBody)
-                                .foregroundColor(.clepsyTextPrimary)
-                            Text("0 min today")
-                                .font(.clepsyCaption)
-                                .foregroundColor(.clepsyTextSecondary)
-                        }
-
-                        Spacer()
-
-                        Text("Vice")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.clepsyOrange)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.clepsyOrange.opacity(0.15))
-                            .cornerRadius(8)
-                    }
-                    .padding()
-                    .background(Color.clepsySurface)
-                    .cornerRadius(16)
-                }
-            }
-        }
+        selectionSection(
+            title: "Blocked Apps",
+            selection: viewModel.viceSelection,
+            badge: "Vice",
+            badgeColor: .clepsyOrange,
+            emptyMessage: "No blocked apps yet — choose them in Settings"
+        )
     }
 
     // MARK: - Productive Apps
 
     private var productiveAppsSection: some View {
+        selectionSection(
+            title: "Productive Apps",
+            selection: viewModel.productiveSelection,
+            badge: "Productive",
+            badgeColor: .clepsyTeal,
+            emptyMessage: "No productive apps yet — choose them in Settings"
+        )
+    }
+
+    private func selectionSection(
+        title: String,
+        selection: FamilyActivitySelection,
+        badge: String,
+        badgeColor: Color,
+        emptyMessage: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
-            Text("Productive Apps")
+            Text(title)
                 .font(.clepsyHeadline)
                 .foregroundColor(.clepsyTextPrimary)
 
-            ForEach(viewModel.productiveApps) { app in
-                Button {
-                    launchApp(bundleId: app.bundleIdentifier)
-                } label: {
-                    HStack(spacing: 12) {
-                        AppIconView(bundleIdentifier: app.bundleIdentifier)
-                            .frame(width: 40, height: 40)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.name)
-                                .font(.clepsyBody)
-                                .foregroundColor(.clepsyTextPrimary)
-                            Text("0 min earned")
-                                .font(.clepsyCaption)
-                                .foregroundColor(.clepsyTextSecondary)
-                        }
-
-                        Spacer()
-
-                        Text("Productive")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.clepsyTeal)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.clepsyTeal.opacity(0.15))
-                            .cornerRadius(8)
-                    }
+            if selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty {
+                Text(emptyMessage)
+                    .font(.clepsyCaption)
+                    .foregroundColor(.clepsyTextSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .background(Color.clepsySurface)
                     .cornerRadius(16)
+            } else {
+                ForEach(Array(selection.categoryTokens), id: \.self) { token in
+                    selectionRow(Label(token), badge: badge, badgeColor: badgeColor)
+                }
+                ForEach(Array(selection.applicationTokens), id: \.self) { token in
+                    selectionRow(Label(token), badge: badge, badgeColor: badgeColor)
                 }
             }
         }
+    }
+
+    private func selectionRow<L: View>(_ label: L, badge: String, badgeColor: Color) -> some View {
+        HStack(spacing: 12) {
+            label
+                .font(.clepsyBody)
+                .foregroundColor(.clepsyTextPrimary)
+
+            Spacer()
+
+            Text(badge)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(badgeColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(badgeColor.opacity(0.15))
+                .cornerRadius(8)
+        }
+        .padding()
+        .background(Color.clepsySurface)
+        .cornerRadius(16)
     }
 
     // MARK: - Test Actions
@@ -442,13 +425,6 @@ struct DashboardView: View {
     }
 
     // MARK: - Helpers
-
-    private func launchApp(bundleId: String) {
-        if let url = URL(string: "app://\(bundleId)"),
-           UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-        }
-    }
 
     private var expressionForBalance: ClepsyExpression {
         if viewModel.goalProgressPercentage >= 1.0 {
