@@ -246,7 +246,7 @@ unaffected by the reset.
 | Shows expiration indicator ("Expires at midnight (5 hours remaining)") | ❌ |
 | Shows last-updated timestamp ("Updated 30 seconds ago") | ❌ |
 | Button "Unlock [App] for [X] minutes" with exact available time | ⚠️ Capped at 5 min |
-| Prominently features Clepsy in Patient state | ❌ Static `shield_icon` image; no such asset in the catalog |
+| Prominently features Clepsy in Patient state | ⚠️ Static `shield_icon` (a downscaled mascot copy in the extension's own asset catalog) — not the animated character, no Patient/Encouraging state |
 | Sand level reflects goal progress | ❌ |
 | Zero-balance distinguishes "Fresh Start" (post-midnight) vs. "spent it all" | ❌ Single generic message |
 | "Earn Time Now" button opens the main app | ❌ Shield extensions can't launch apps; zero-balance shows "Go Back" |
@@ -316,7 +316,7 @@ Legend: ✅ built · ⚠️ partial · ❌ missing
 | Shield shows expiration indicator | ❌ | |
 | Shield shows last-updated timestamp | ❌ | |
 | Unlock button showing exact available time | ⚠️ | Capped at 5 min |
-| Clepsy character in Patient state on shield | ❌ | Missing `shield_icon` asset |
+| Clepsy character in Patient state on shield | ⚠️ | Static mascot icon only; no expression state |
 | Sand level reflects goal progress on shield | ❌ | |
 | Zero-balance shield state | ✅ | Generic copy |
 | Zero-balance reason (Fresh Start vs. spent) | ❌ | |
@@ -479,7 +479,7 @@ Not documentation problems, but they change what the docs should say. Listed by 
 | C6 | **No vice/productive conflict detection** (PRD P0). An app can be in both lists; behavior then is undefined. | — |
 | C7 | **Streak semantics differ from PRD** (goal-met days vs. earning days), and `clepsy_streak_goal_met_today` is cleared only in `performReset()` — which the nil-`lastResetDate` branch of `checkAndPerformDailyReset` bypasses. | `DashboardViewModel.swift:161` |
 | C8 | **`resetAllData()` doesn't clear streak keys** — they live in standard `UserDefaults` under `clepsy_streak_*`, outside `PersistenceService.clearAll()`. "Start fresh" keeps the streak. | `SettingsViewModel.swift:122` |
-| C9 | **Missing asset `shield_icon`** referenced by the shield extension; not in `Assets.xcassets`. Shield renders with no icon. | `ShieldConfigurationExtension.swift:52` |
+| ~~C9~~ | ~~Missing asset `shield_icon`.~~ **Withdrawn — this was an audit error.** The asset exists at `ClepsyShieldConfiguration/Assets.xcassets/shield_icon.imageset`; extensions carry their own catalogs and the original check only looked in `Clepsy/Assets.xcassets`. | — |
 | C10 | **Dead code:** `EarningSessionManager`, `ShieldConfigurationView`, `AppIconView` (its comment claims DashboardView uses it — it doesn't), `AppCategory.defaultViceApps`/`defaultProductiveApps` (loaded into `DashboardViewModel` but never rendered), `TimeBalance.formattedTime`, `UserSettings.exchangeRate`. Roughly 400 lines. | various |
 | C11 | **`saveTimeBalance` constructs a `SharedStorageService()` on every call**, each one hitting `createDirectory` and a `containerURL` lookup. Same pattern in `AppBlockingService.applyViceAppBlocks`. | `PersistenceService.swift:33` |
 | C12 | **Data-architecture doc's storage description is wrong.** It documents `pendingTimeEvents` as an App Group *UserDefaults key*; the implementation uses a **file** (`pendingTimeEvents.json`) with `NSFileCoordinator`. The doc's key table also omits every key actually in use: `viceSelection`, `productiveSelection`, `balanceSeconds`, `pendingDeltaSeconds`, `activeUnlocks`, `shieldShowedBalanceByToken`, `unlockExpiresAt`, `clepsy_streak_*`. | `docs/data-architecture.md:293` |
@@ -525,7 +525,7 @@ types and the specs mix "what we want" with "what we built." Proposed shape:
 ```
 Project: Clepsy MVP
 ├─ Epic: Earning engine          → D1 (decide + reconcile), U8, C3
-├─ Epic: Spending & shield       → D2, D6, U1–U5, U7, C9
+├─ Epic: Spending & shield       → D2, D6, U1–U5, U7
 ├─ Epic: Notifications           → D3, C2   (0% built, fully specified)
 ├─ Epic: History & analytics     → D4       (P0 in PRD, 0% built)
 ├─ Epic: Daily expiration        → D5, C4, C7
@@ -594,5 +594,6 @@ simulator-testing-guide}.md`, `docs/plans/{clepsy_mvp,mvb-brand-guide,prd}.md`,
 
 27 mascot PNGs in `design/assets/` at @1x/@2x/@3x (5 body levels × 3 + 3 faces × 3), matching the
 asset guide. `Clepsy/Assets.xcassets` additionally carries `clepsy_mascot`, `patience_mouth`,
-`encouraging_mouth`, and `AppIcon`. **`shield_icon` is referenced by the shield extension and does
-not exist** (C9).
+`encouraging_mouth`, and `AppIcon`. `ClepsyShieldConfiguration` carries a **separate** asset catalog
+holding `shield_icon` (a downscaled mascot copy bundled into the extension) — extensions cannot read
+the host app's catalog, so this duplication is required.

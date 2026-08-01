@@ -146,7 +146,14 @@ in-app balance updates only on foreground (the shield reads a live mirror, so *i
 
 **Related:** `EarningSessionManager` — see CD-024.
 
-### CD-012 · 180-minute/day earning ceiling ❓
+### CD-012 · 180-minute/day earning ceiling ✅ *(decided 2026-08-01: remove it)*
+
+> **Decision:** the ceiling is not intended. Remove it — there should be no daily earning cap, matching
+> the "Dropped from MVP" scope call. Implementation note: raising the loop bound linearly grows the
+> registered event count, so the fix is probably *not* `1...1440`. Options to weigh: cap at a
+> defensible waking-hours figure, or switch to a small repeating threshold set that re-arms. Needs a
+> spike to confirm what DeviceActivity will accept before picking.
+
 **Code:** `UsageTrackingService.swift:36` — `for minutes in 1...180`
 
 Thresholds stop at 180, so **a user earns nothing after 3 hours of productive app use per day.**
@@ -220,7 +227,15 @@ longer exist.
 **Conflicts with:** `docs/specs/dashboard.md` §3.5, which specifies two standalone stat cards with
 teal/orange borders and "From X apps" context.
 
-### CD-018 · The hourglass shows spendable balance, not goal progress ❓ ⤴️
+### CD-018 · The hourglass shows spendable balance, not goal progress ✅ ⤴️ *(confirmed 2026-08-01)*
+
+> **Decision:** current behavior stands. The sand level represents **spendable balance** — it drains as
+> you spend, which is what an hourglass should do. The docs are what's wrong here, not the code.
+> Follow-ups: amend PRD J3 P0 (*"sand level must reflect progress toward their daily productivity
+> goal"*) and the MVB's "Why Hourglass Body?" rationale, which is currently written around the
+> goal-progress reading. Also worth revisiting CD-019 — the face still keys off goal progress while the
+> body keys off balance.
+
 **Code:** `DashboardView` passes `viewModel.balancePercentage` (= balance ÷ daily goal)
 **Commits:** `9db7dd7` set it to goal progress → `157be49` *"Fix hourglass to use balance (spendable)
 not goal progress"* reversed it.
@@ -243,7 +258,14 @@ Note these keys off `goalProgressPercentage` (earned ÷ goal), while the *body* 
 `balancePercentage` (CD-018) — so face and body track different quantities. Probably fine, possibly
 surprising. Body fill buckets at 12.5% boundaries: 0 / 25 / 50 / 75 / 100.
 
-### CD-020 · Streak counts goal-met days, not earning days ❓ ⤴️
+### CD-020 · Streak counts goal-met days, not earning days ❓ ⤴️ *(answered ambiguously 2026-08-01 — needs one word)*
+
+> **Owner replied "correct"** — which is ambiguous here, because affirming the *code* and affirming the
+> *recommendation* point in opposite directions. Either read is plausible; resolve before acting:
+> **(a)** goal-met days is right → keep the code, amend PRD J5's "consecutive days with earning
+> activity" definition. **(b)** the analysis is right → change the code to count any day with earning
+> activity, keep the PRD. Everything else below is unaffected either way.
+
 **Code:** `DashboardViewModel.incrementStreak` — fires from `addTime` when `goalProgressPercentage >= 1.0`
 
 **Conflicts with:** PRD J5, which defines the streak as *"consecutive days with earning activity"* and
@@ -352,11 +374,18 @@ implicit in "one threshold = 60 seconds." Harmless, but it implies configurabili
 
 ## Summary: what needs a decision from you
 
+### Resolved 2026-08-01
+
+| ID | Decision |
+|---|---|
+| CD-012 | **Remove the 180 min/day ceiling.** Needs a spike on how to do it without registering 1,440 events. |
+| CD-018 | **Hourglass = spendable balance.** Code stands; amend PRD J3 and the MVB hourglass rationale. |
+
+### Still open
+
 | ID | Question | Why it matters |
 |---|---|---|
-| CD-012 | Is a 180 min/day earning ceiling OK? | Silent cap; contradicts a scope decision you already made |
-| CD-018 | Hourglass = spendable balance or goal progress? | Decided twice, opposite ways; MVB rationale depends on it |
-| CD-020 | Streak = goal-met days or earning days? | Current bar may be too high to ever trigger |
+| CD-020 | Streak = goal-met days or earning days? | Reply was ambiguous — one word settles it |
 | CD-021 | Is the 5-minute unlock cap intentional? | Looks like a prototype value; changes the core promise |
 | CD-022 | Which daily goal options are canonical? | Two sets; users can strand themselves on 45/90 |
 | CD-024 | Keep or delete `EarningSessionManager`? | Its existence is why the earning spec looks live |
