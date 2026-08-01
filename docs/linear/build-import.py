@@ -15,18 +15,37 @@ URGENT, HIGH, MED, LOW = 1, 2, 3, 4
 # (Project, Title, Priority, Labels, Estimate, Description)
 ISSUES = [
     # ---------------------------------------------------------------- decisions
-    ("Decisions", "Decide: streak counts goal-met days or earning-activity days", HIGH, "decision", 1,
-     "CD-020. Code fires the streak only when goalProgressPercentage >= 1.0, so a user earning 20 of a "
-     "30-min goal daily never builds a streak. PRD J5 defines it as 'consecutive days with earning "
-     "activity'. Pick one: keep the code and amend the PRD, or change the code and keep the PRD.\n\n"
+    ("Docs & hygiene", "Amend PRD J5: the streak is a goal-completion streak", MED, "docs", 1,
+     "CD-020, decided 2026-08-01. Goal-met days is the intended rule; the code stands. PRD J5 currently "
+     "defines the streak as 'consecutive days with earning activity' and calls it a 'Fresh Start "
+     "Streak' - both need rewriting to describe goal completion.\n\n"
+     "Accepted consequence to state in the doc: partial-credit days count for nothing (20 of a 30-min "
+     "goal daily for a month = streak of 0).\n\n"
      "Source: docs/decisions/decision-log.md#cd-020"),
 
-    ("Decisions", "Decide: is the 5-minute unlock cap intentional?", HIGH, "decision", 1,
-     "CD-021. Traces to commit 9db7dd7 ('wire vice app unlock to deduct 5 min') — a dashboard prototype "
-     "value later mirrored into the shield as maxUnlockMinutes. PRD J4 promises 'Button displays exact "
-     "available time'. A cap forces a re-decision every 5 min (aligns with Intentional Friction) but "
-     "hides the true cost of banked time (weakens the Painkiller value prop).\n\n"
-     "Source: docs/decisions/decision-log.md#cd-021"),
+    ("Spending & shield", "Spike: can DeviceActivity meter vice usage against a live balance?", URGENT, "spike", 3,
+     "CD-031, decided 2026-08-01. Target model: unlock the FULL accumulated balance, consume it only "
+     "while the user is actually in a vice app, re-shield at zero. Confirm feasibility before building.\n\n"
+     "Four questions to answer:\n"
+     "1. Thresholds are fixed at schedule start but the balance moves as the user earns. Does the vice "
+     "schedule need re-registering on every balance change, and does that reset accumulated vice usage "
+     "the way it does for earning (CD-008)? If yes, this is materially harder.\n"
+     "2. The 15-minute minimum interval (CD-006) applies here too. A user with 6 minutes banked needs a "
+     "shorter window than the framework allows - does the backdating trick cover it?\n"
+     "3. Earning already registers up to 180 events and CD-012 will raise that. Will iOS tolerate a "
+     "second large concurrent schedule?\n"
+     "4. Re-shield latency: threshold firing to shield application is not instant. How much overrun past "
+     "zero, and should we under-grant to compensate?\n\n"
+     "Source: docs/decisions/decision-log.md#cd-031"),
+
+    ("Spending & shield", "Build full-balance unlock with usage-metered consumption", HIGH, "feature", 8,
+     "CD-031. Replaces the prepaid fixed-window model (CD-021, rejected - the 5-minute cap was a "
+     "prototype value that hardened).\n\n"
+     "Half the plumbing already exists: DeviceActivityName.viceApps is defined, "
+     "DeviceActivityMonitorExtension.handleViceAppEvent already writes a 60-second .spent event, and "
+     "stopAllMonitoring already tears it down. The gap is that nothing ever calls "
+     "startMonitoring(.viceApps, ...).\n\n"
+     "Blocked on the feasibility spike. Also removes the need to unify the duplicated 5-min constant."),
 
     ("Decisions", "Decide: which daily-goal option set is canonical", MED, "decision", 1,
      "CD-022. Onboarding offers [15,30,45,60,90,120]; Settings offers [15,30,60,120,180,240]. A user who "
@@ -83,21 +102,16 @@ ISSUES = [
      "the 16-min backdating for DeviceActivity's minimum interval (CD-006), stale-shield mitigation for "
      "Apple bug FB14237883 (CD-007), and unlock-aware foreground re-shielding (CD-009)."),
 
-    ("Spending & shield", "Amend PRD J4: prepaid window replaces real-time deduction", HIGH, "docs", 2,
-     "CD-014. J4 P0s specify per-second metering, deduction as the user scrolls, and auto re-shield at "
-     "zero mid-session. None are implementable — per-second foreground metering is not available to a "
-     "background extension. Document the prepaid model and its user-visible consequence: unlock 5 "
-     "minutes, use 40 seconds, you still paid 5."),
+    ("Spending & shield", "Amend PRD J4: real-time deduction at 1-minute granularity", HIGH, "docs", 2,
+     "CD-014 / CD-031. The audit originally claimed J4's real-time deduction P0s were not implementable. "
+     "That was wrong: per-SECOND metering is unavailable to a background extension, but per-MINUTE "
+     "metered consumption works via the same threshold mechanism the earning path already uses.\n\n"
+     "So amend J4 to 1-minute granularity rather than striking it. The intent survives; only the "
+     "resolution changes."),
 
     ("Spending & shield", "Amend PRD J3: 'Earn Time Now' is not implementable", MED, "docs", 1,
      "CD-005. A shield extension cannot launch another app — no API exists. The zero-balance state shows "
      "a single honest 'Go Back'. Replace the requirement rather than tracking it as a gap."),
-
-    ("Spending & shield", "Unify the 5-minute unlock constant across targets", MED, "tech-debt", 1,
-     "maxUnlockMinutes is defined in ClepsyShieldConfiguration but ShieldActionExtension hardcodes "
-     "min(5, ...) as a literal in two places. They will drift. Blocked on the CD-021 decision.\n\n"
-     "Files: ClepsyShieldConfiguration/ShieldConfigurationExtension.swift:15, "
-     "ClepsyShieldAction/ShieldActionExtension.swift:37,64"),
 
     ("Spending & shield", "Shield: add expiration indicator and last-updated timestamp", MED, "feature", 2,
      "PRD J3 P0s, unbuilt. 'Expires at midnight (5 hours remaining)' and 'Updated 30 seconds ago'. Note "

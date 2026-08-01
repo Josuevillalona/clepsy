@@ -258,13 +258,17 @@ Note these keys off `goalProgressPercentage` (earned ÷ goal), while the *body* 
 `balancePercentage` (CD-018) — so face and body track different quantities. Probably fine, possibly
 surprising. Body fill buckets at 12.5% boundaries: 0 / 25 / 50 / 75 / 100.
 
-### CD-020 · Streak counts goal-met days, not earning days ❓ ⤴️ *(answered ambiguously 2026-08-01 — needs one word)*
+### CD-020 · Streak counts goal-met days, not earning days ✅ ⤴️ *(confirmed 2026-08-01)*
 
-> **Owner replied "correct"** — which is ambiguous here, because affirming the *code* and affirming the
-> *recommendation* point in opposite directions. Either read is plausible; resolve before acting:
-> **(a)** goal-met days is right → keep the code, amend PRD J5's "consecutive days with earning
-> activity" definition. **(b)** the analysis is right → change the code to count any day with earning
-> activity, keep the PRD. Everything else below is unaffected either way.
+> **Decision:** goal-met days is correct. The code stands; the docs change.
+>
+> The streak is a **goal completion** streak, not a participation streak — it only increments on days
+> the user actually hits their daily goal. Follow-up: amend PRD J5, which currently defines it as
+> "consecutive days with earning activity" and labels it a "Fresh Start Streak."
+>
+> **Accepted consequence:** partial-credit days count for nothing. A user earning 20 minutes against a
+> 30-minute goal every day for a month has a streak of zero. If that turns out to be demotivating in
+> testing, the lever is the daily goal default (30 min), not the streak rule.
 
 **Code:** `DashboardViewModel.incrementStreak` — fires from `addTime` when `goalProgressPercentage >= 1.0`
 
@@ -278,7 +282,13 @@ session every day,"* the earning-activity definition matches the strategy better
 **Also:** the `clepsy_streak_*` keys live in standard `UserDefaults` outside
 `PersistenceService.clearAll()`, so "Reset all data" preserves the streak.
 
-### CD-021 · Unlocks are capped at 5 minutes ❓
+### CD-021 · Unlocks are capped at 5 minutes ❌ *(rejected 2026-08-01 — replaced by CD-031)*
+
+> **Decision:** the 5-minute cap is **not** the intended model. It was a prototype value that hardened.
+> The target model is: **unlock the full accumulated balance, and consume it only while the user is
+> actually in the app.** Specified as CD-031 below. The rest of this entry is retained as the record of
+> what is currently built.
+
 **Code:** `ShieldConfigurationExtension.maxUnlockMinutes = 5`; `ShieldActionExtension.swift:37,64`
 (hardcoded literal `min(5, …)`, twice, not referencing the constant)
 
@@ -294,6 +304,45 @@ what they banked — but it does force a re-decision every 5 minutes, which is a
 with the Intentional Friction principle.
 
 **Cleanup regardless:** the constant lives in one target and the literal in another. They will drift.
+
+### CD-031 · Target spending model: full-balance unlock, metered by actual usage ✅ *(decided 2026-08-01)*
+**Status:** decided, **not built.** Supersedes CD-021 and rewrites CD-014.
+
+**The model:** tapping unlock grants access to the app using the user's *entire* accumulated balance.
+Time is consumed **only while the user is actually in a vice app** — not by wall clock. When the
+balance is exhausted, the app re-shields. Balance ticks down in 1-minute increments as they use it.
+
+**Why this reverses my earlier analysis.** The audit claimed the PRD's real-time deduction was "not
+implementable as written." That was **too strong and it shaped several conclusions**. Per-*second*
+metering genuinely isn't available to a background extension — but per-*minute* metered consumption is,
+using exactly the mechanism the earning path already uses: a DeviceActivity schedule over the vice apps
+with 1-minute threshold events, each firing burning a minute off the ledger. DeviceActivity thresholds
+measure **actual usage**, not elapsed time, which is precisely the required semantics.
+
+**The plumbing is already half-built**, which suggests this was the original intent before the prepaid
+window went in as a stopgap:
+
+- `DeviceActivityName.viceApps` is defined (`UsageTrackingService.swift:114`)
+- `DeviceActivityMonitorExtension.handleViceAppEvent` already writes a 60-second `.spent` event
+- `UsageTrackingService.stopAllMonitoring` already tears `.viceApps` down
+- **Nothing ever calls `startMonitoring(.viceApps, …)`** — that's the whole gap
+
+**Open questions for a spike** (don't skip these — each could change the design):
+
+1. **Re-registration on balance change.** Thresholds are fixed when the schedule starts, but the
+   balance moves as the user earns. Does the vice schedule need re-registering whenever the balance
+   changes, and does re-registering reset accumulated vice usage the way it does for earning (CD-008)?
+   If it does, this is materially harder.
+2. **The 15-minute minimum interval** (CD-006) applies here too. A user with 6 minutes banked needs a
+   schedule shorter than the framework's minimum — the backdating trick may or may not cover it.
+3. **Concurrent event limits.** Earning already registers up to 180 events, and CD-012 will raise that.
+   Whether iOS tolerates a second large concurrent schedule needs verifying before committing.
+4. **Re-shield latency.** Threshold firing → shield application is not instantaneous. Some overrun past
+   zero balance is likely; decide what's acceptable and whether to under-grant to compensate.
+
+**Doc follow-ups:** PRD J4's real-time-deduction P0s become *achievable* rather than *impossible* —
+amend to 1-minute granularity rather than striking them. CD-014's "not implementable" framing and the
+audit's D2 entry both need rewriting.
 
 ### CD-022 · Daily goal options differ between onboarding and Settings ❓
 Onboarding: `[15, 30, 45, 60, 90, 120]` · Settings: `[15, 30, 60, 120, 180, 240]`

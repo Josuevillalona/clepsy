@@ -14,8 +14,13 @@ disagrees with it, and produce a clean basis for migrating documentation from Go
 >
 > **Careful with "5 minutes" and "2 minutes"** — there are three unrelated pairs in this codebase:
 > the dashboard's +5/−2 test buttons (scaffolding, CD-023), the shield's 5-minute unlock cap
-> (production, CD-021), and `EarningSessionManager`'s 2-minute pause / 5-minute credit interval (the
-> spec's values, in code that never runs, CD-024).
+> (production but **rejected** as a design — CD-021), and `EarningSessionManager`'s 2-minute pause /
+> 5-minute credit interval (the spec's values, in code that never runs, CD-024).
+>
+> **Two findings in this document have been corrected since publication.** D2's claim that real-time
+> deduction is not implementable was wrong — see the correction in §4, and CD-031 for the model that
+> replaces it. Finding C9 (missing `shield_icon`) was withdrawn entirely; the asset exists in the
+> shield extension's own catalog.
 
 ---
 
@@ -198,10 +203,19 @@ minutes and uses 40 seconds still pays 5 minutes; a user with 60 minutes banked 
 minutes per tap. `DeviceActivityName.viceApps` monitoring is **never started** — the handler exists in
 the extension but nothing registers the schedule.
 
-This is defensible (real-time metering on iOS is genuinely hard, and prepaid windows are far more
-reliable), but it is a different product promise and the PRD's Painkiller value prop —
-*"you see exactly what it costs"* — is weakened by the flat 5-minute cap. Nothing in any doc mentions
-5 minutes.
+**⚠️ Correction (2026-08-01).** This entry originally argued the prepaid window was the only viable
+model because "real-time metering on iOS is genuinely hard." **That was wrong and it skewed the
+audit.** Per-*second* metering is unavailable to a background extension, but per-*minute* metered
+consumption is entirely achievable — via the same DeviceActivity threshold mechanism the earning path
+already uses, since thresholds measure *actual usage* rather than elapsed time. The owner has since
+confirmed the intended model is full-balance unlock with usage-metered consumption (**CD-031**), and
+the plumbing for it is already half-present: `DeviceActivityName.viceApps` is defined and
+`handleViceAppEvent` is written — only `startMonitoring(.viceApps, …)` is missing.
+
+So the prepaid window is **a stopgap, not a design**, and the flat 5-minute cap was a prototype value
+that hardened (CD-021, rejected). PRD J4's real-time-deduction P0s should be **amended to 1-minute
+granularity, not struck as impossible**. See CD-031 for the target model and the four open questions a
+spike needs to answer before building it.
 
 ### D3 — Notifications: fully specified, zero implementation 🔴
 
@@ -542,10 +556,11 @@ These block a clean doc rewrite — each changes what the updated PRD says.
 
 1. **Earning model (D1):** is threshold-based accrual the accepted design, or should
    `EarningSessionManager` be wired up? The warmup/session rules exist only on paper today.
-2. **Spending model (D2):** is the prepaid 5-minute unlock the MVP model? If yes, the PRD's
-   real-time-deduction P0s need rewriting and the 5-minute cap needs a rationale in the docs.
-3. **Unlock cap:** why 5 minutes, and should it scale with balance or be user-configurable?
-4. **180-minute earning ceiling (U8):** intentional, or an artifact to remove?
+2. ~~**Spending model (D2)**~~ — **RESOLVED 2026-08-01.** Not the prepaid window. Target is
+   full-balance unlock with usage-metered consumption (CD-031); needs a spike on threshold
+   re-registration, the 15-min minimum interval, concurrent event limits, and re-shield latency.
+3. ~~**Unlock cap**~~ — **RESOLVED.** The 5-minute cap is rejected (CD-021).
+4. ~~**180-minute earning ceiling (U8)**~~ — **RESOLVED.** Remove it (CD-012).
 5. **Notifications (D3):** still P0 for launch? If yes it's a full epic. If not, the Settings UI
    should be hidden until it works — it currently promises something that doesn't exist.
 6. **History (D4):** PRD marks earning/spending history P0. Nothing is stored. Keep as P0 (needs a
