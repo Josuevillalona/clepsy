@@ -6,6 +6,17 @@
 **Purpose:** Establish ground truth on what is actually built, catalogue where the written documentation
 disagrees with it, and produce a clean basis for migrating documentation from Google Docs into Linear.
 
+> **Companion document:** [`docs/decisions/decision-log.md`](../decisions/decision-log.md) records the
+> *implementation decisions* behind these divergences — reconstructed from source comments and commit
+> history. Where this audit says "the docs and the code disagree," the decision log says *why the code
+> does what it does*, and flags which choices still need the owner's call. Read the decision log first;
+> most of what looks like drift here is an undocumented decision there.
+>
+> **Careful with "5 minutes" and "2 minutes"** — there are three unrelated pairs in this codebase:
+> the dashboard's +5/−2 test buttons (scaffolding, CD-023), the shield's 5-minute unlock cap
+> (production, CD-021), and `EarningSessionManager`'s 2-minute pause / 5-minute credit interval (the
+> spec's values, in code that never runs, CD-024).
+
 ---
 
 ## 1. Scope & Method
@@ -140,7 +151,8 @@ warning and the Continue button stays disabled. Vestigial category-handling code
   Productive app picker → Daily goal. Then a 2.5s celebration overlay on the dashboard.
 - **Dashboard:** header, balance hero card (animated mascot + pulsing glow, balance, inline
   Earned/Spent), conditional streak banner, goal progress card, blocked-apps list, productive-apps
-  list, and a **"Test Actions" +5min/−2min debug section that is not behind `#if DEBUG`**.
+  list, and a **"Test Actions" +5min/−2min section** — a Simulator test harness for the
+  earning/spending UI that is currently not behind `#if DEBUG` (CD-023).
 - **Settings:** 6 sections matching the spec's structure — Daily Goal, Vice Apps, Productive Apps,
   Notifications, Account & Data, About (with How Clepsy Works, Privacy, Terms, Feedback, version).
 
@@ -459,7 +471,7 @@ Not documentation problems, but they change what the docs should say. Listed by 
 
 | # | Issue | Location |
 |---|---|---|
-| C1 | **Debug UI ships in release.** "Test Actions" +5min/−2min buttons that mutate the balance are in the production dashboard with no `#if DEBUG` guard. | `DashboardView.swift:332` |
+| C1 | **Development scaffolding is not gated.** The "Test Actions" +5min/−2min buttons are a deliberate Simulator test harness for the earning/spending UI (confirmed by the owner — the 5 and 2 are arbitrary test amounts, not product values), but they carry no `#if DEBUG` guard, so they ship to TestFlight/App Store as a user-facing section that grants free balance. See CD-023. | `DashboardView.swift:332` |
 | C2 | **`milestoneInterval` is never persisted.** `didSet` calls `saveSettings()`, which doesn't write it; `UserSettings` has no such field. Silently resets to 15. | `SettingsViewModel.swift:16` |
 | C3 | **`todayEarned`/`todaySpent` are in-memory only.** Lost on relaunch, taking goal progress and mascot expression with them. | `DashboardViewModel.swift:8` |
 | C4 | **Daily reset checked only in `onAppear`.** Backgrounded app misses midnight. | `DashboardViewModel.swift:136`, `DashboardView.swift:59` |
