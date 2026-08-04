@@ -26,7 +26,13 @@ decision that may not have been made deliberately — those need your call.
 These are the ones most at risk of being "corrected" by someone who doesn't know why they exist.
 Every one of them cost debugging time to discover.
 
-### CD-001 · Selections must be individual apps, never categories 🔒 ⤴️
+### CD-001 · Selections must be individual apps, never categories 🔒 ⤴️ ✅ *(confirmed 2026-08-04)*
+
+> **Decision:** apps-only is permanent and intended, not just a workaround. The UI must keep preventing
+> category selection. PRD J1 P2 (category blocking) is **struck**, and the unreachable category paths
+> in `AppBlockingService`, `ShieldActionExtension.handle(for category:)` and the monitor extension
+> should be removed so only one selection model exists.
+
 **Code:** `AppSelectionView.swift:15`, `SettingsViewModel.swift:23`
 
 Both pickers reject `FamilyActivitySelection.categoryTokens`. Continue stays disabled; Settings
@@ -358,7 +364,12 @@ counts down while you're in blocked apps."* Tapping it unshields **all** vice ap
 amend the wording, don't strike it. CD-014's "not implementable" framing and the audit's D2 entry are
 both corrected.
 
-### CD-022 · Daily goal options differ between onboarding and Settings ❓
+### CD-022 · Daily goal options differ between onboarding and Settings ✅ *(decided 2026-08-04)*
+
+> **Decision:** **15 / 30 / 45 / 60 / 90 / 120** minutes is canonical — onboarding's set wins.
+> `SettingsView.GoalPickerSheet` changes from `[15,30,60,120,180,240]` to match. Gentler ladder, and
+> nobody can strand themselves on a 45 or 90 they can't re-pick later.
+
 Onboarding: `[15, 30, 45, 60, 90, 120]` · Settings: `[15, 30, 60, 120, 180, 240]`
 
 A user who picks 45 or 90 in onboarding cannot see or re-select that value in Settings' wheel picker.
@@ -384,7 +395,12 @@ are arbitrary test amounts, not product values.
 user-facing "Test Actions" section that grants free balance. Gate or remove before any external
 build. (Guarding them is a 2-line change.)
 
-### CD-024 · `EarningSessionManager` is a spec-faithful reference implementation, unused 🧪
+### CD-024 · `EarningSessionManager` is a spec-faithful reference implementation, unused ✅ *(decided 2026-08-04: keep, clearly marked)*
+
+> **Decision:** keep the file, but mark it unmistakably as not live. A header comment stating it is
+> never called, with a pointer to CD-011 for what actually runs. It stays compiled (so its tests keep
+> passing) purely as a reference if session-based earning is ever revisited on-device.
+
 **Code:** `Clepsy/Services/EarningSessionManager.swift` (169 lines) + 167 lines of tests
 
 Implements the documented model exactly — 60s warmup, 2-minute pause timeout, 5-minute credit
@@ -464,6 +480,63 @@ the toggle above it now controls something real.
 
 ---
 
+### CD-036 · The daily goal is a floor, not a ceiling ✅ *(clarified 2026-08-04)*
+
+The daily goal exists **only** to set the bar for the streak (CD-020). It is not a cap, a budget, or a
+stopping point. A user who wants to earn 6 hours against a 30-minute goal should be able to, and should
+keep earning at the same 1:1 rate the whole way.
+
+**Why this needs saying:** two numbers in the code look like limits and aren't product decisions at
+all — the `1...180` earning ladder (CD-012) and the `1...180` spending ladder (R-02). Both are
+artifacts of how many DeviceActivity alarms got registered, not expressions of intent. Anyone reading
+the code could reasonably mistake them for a deliberate 3-hour cap. They aren't. **There is no cap.**
+
+**Consequence:** CD-012 isn't "raise the ceiling," it's "there should be no ceiling," and the same
+applies to spending. See CD-037 for how.
+
+### CD-037 · Unlimited earning and spending via re-arming threshold ladders 🔬 *(proposed 2026-08-04 — needs device verification)*
+**Status:** design direction, **not built, not verified.**
+
+**The constraint:** DeviceActivity can't do "notify me every minute, forever." You register a fixed
+list of alarms up front — alarm at 1 minute of use, at 2 minutes, and so on. When the last one fires,
+you stop hearing anything. That's why both ladders stop at 180: somebody had to pick a number.
+
+**The fix — one mechanism for both sides:**
+
+*Earning.* Register a short ladder (say `earn_1 … earn_60`) instead of 180. When the **top** threshold
+fires, the monitor extension restarts the `productiveApps` schedule anchored at *now* with a fresh
+ladder. Repeat indefinitely. Truly unlimited, with a constant 60 events instead of a growing list.
+
+*Spending.* Size the ladder to the balance the user actually has at session start rather than always
+registering 180. Balance of 12 minutes → 12 alarms. Users can't earn while spending (productive and
+vice apps are different apps), so the balance is effectively fixed for the session. If a balance ever
+exceeds the ladder length, re-arm exactly as earning does.
+
+This is strictly better than today even ignoring the cap: a user with 10 minutes banked currently gets
+180 alarms registered, 170 of them pointless.
+
+**Precedent:** `ShieldActionExtension.restartViceMonitoring` already restarts monitoring from inside an
+extension, so the pattern is proven in this codebase.
+
+**Deliberate use of CD-008:** restarting a schedule *resets* accumulated usage. Everywhere else that's
+a hazard; here it's the point — those minutes are already banked, so the counter should start over.
+
+**What must be verified on a device before committing:**
+
+1. **Is there a hard limit on events per activity, or on total events across activities?** 180 + 180
+   apparently works today, but nothing has confirmed the ceiling. If a small ladder is required, this
+   design is mandatory rather than merely better.
+2. **How much usage leaks at each re-arm?** There's a gap between the final threshold firing and the
+   new schedule taking effect. Seconds per hour is fine; minutes per hour is not.
+3. **Can the monitor extension reliably restart its own schedule** from inside `eventDidReachThreshold`,
+   given its execution budget (cf. R-01)?
+
+**Direction of error:** on earning, a leak means the user earns slightly *less* than they used. On
+spending, it means they spend slightly *less* than they used. Both err in the user's favour, which is
+the right way round for a trust-critical app.
+
+---
+
 ## F. Open Risks
 
 Introduced or left open by the current implementation. Not decisions — things to watch.
@@ -497,8 +570,13 @@ Past that, no further thresholds fire, the balance stops draining, and the apps 
 session can't outlive its thresholds. **But CD-012 says remove the earning ceiling**, and the moment
 earning exceeds 180/day this becomes free unlimited vice access after 180 metered minutes.
 
-**These two ceilings must move together.** Whoever picks up CD-012 has to raise the spend ladder in the
-same change, which also makes R-02's event-count question (CD-031 spike Q3) load-bearing.
+**These two ceilings must move together.** Whoever picks up CD-012 has to fix the spend ladder in the
+same change.
+
+**Resolution direction:** CD-036 confirms neither number is a product decision — there is no intended
+cap on either side. CD-037 proposes one mechanism (re-arming ladders) that removes both. Until that
+lands, the safe interim state is the current one: *leave the earning cap in place*, because it's the
+only thing keeping the spending exploit unreachable.
 
 ### R-03 · The vice-schedule builder is duplicated, and the in-app copy is unreachable 🟡
 `ShieldActionExtension.restartViceMonitoring` (live) and `UsageTrackingService.startViceSpendingMonitoring`
@@ -554,13 +632,20 @@ implicit in "one threshold = 60 seconds." Harmless, but it implies configurabili
 | CD-031 | **Full-balance session, metered by actual usage.** | Shipped in `959da5f` ✅ |
 | CD-023 | **Test buttons removed** (deleted, not gated). | Removed in `959da5f` ✅ |
 
+### Resolved 2026-08-04
+
+| ID | Decision |
+|---|---|
+| CD-024 | **Keep `EarningSessionManager`**, marked unmistakably as not live. |
+| CD-022 | **15 / 30 / 45 / 60 / 90 / 120** is canonical; Settings changes to match onboarding. |
+| CD-001 | **Apps-only is permanent.** Strike PRD J1 P2; remove the unreachable category paths. |
+| CD-036 | **The daily goal is a floor, not a ceiling.** Neither `180` is a product decision. |
+
 ### Still open
 
 | ID | Question | Why it matters |
 |---|---|---|
-| CD-022 | Which daily goal options are canonical? | Two sets; users can strand themselves on 45/90 |
-| CD-024 | Keep or delete `EarningSessionManager`? | Its existence is why the earning spec looks live |
-| CD-001 | Drop category blocking from the PRD permanently? | Incompatible with the session model too |
+| CD-037 | Do re-arming ladders actually work on-device? | Three things to verify; gates CD-012 and R-02 |
 
 ### Risks to watch
 
