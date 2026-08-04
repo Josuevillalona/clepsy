@@ -29,6 +29,9 @@ class DashboardViewModel: ObservableObject {
         self.productiveApps = settings.productiveApps.isEmpty ? AppCategory.defaultProductiveApps : settings.productiveApps
         self.viceSelection = persistenceService.loadViceSelection()
         self.productiveSelection = persistenceService.loadProductiveSelection()
+        let stats = persistenceService.loadTodayStats()
+        self.todayEarned = stats.earnedSeconds
+        self.todaySpent = stats.spentSeconds
         loadStreak()
     }
 
@@ -36,6 +39,7 @@ class DashboardViewModel: ObservableObject {
         currentBalance.add(seconds: seconds)
         todayEarned += seconds
         persistenceService.saveTimeBalance(currentBalance)
+        persistenceService.saveTodayStats(earnedSeconds: todayEarned, spentSeconds: todaySpent)
 
         // Check if goal was just met
         if goalProgressPercentage >= 1.0 {
@@ -49,13 +53,19 @@ class DashboardViewModel: ObservableObject {
         currentBalance.subtract(seconds: actualSubtracted)
         todaySpent += actualSubtracted
         persistenceService.saveTimeBalance(currentBalance)
+        persistenceService.saveTodayStats(earnedSeconds: todayEarned, spentSeconds: todaySpent)
     }
 
-    /// Deducts balance, removes shields, and schedules automatic re-shielding when the window expires.
-    func unlockViceApps(seconds: Int) {
-        subtractTime(seconds: seconds)
+    /// Starts a spending session: all vice apps unshield, and the balance
+    /// drains only while one of them is actually in use (the monitor
+    /// extension deducts per usage minute and re-shields at zero).
+    func startSpendingSession() {
+        guard canSpend else { return }
+        SharedStorageService().saveSessionActive(true)
         blockingService.removeAllBlocks()
-        usageTrackingService.startUnlockWindow(seconds: seconds)
+        // Metering interval is anchored at now, so only usage from this
+        // moment on can fire spend thresholds
+        usageTrackingService.startViceSpendingMonitoring(viceSelection: viceSelection)
     }
 
     var canSpend: Bool {

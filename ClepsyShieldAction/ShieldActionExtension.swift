@@ -17,9 +17,9 @@ class ShieldActionExtension: ShieldActionDelegate {
 
             guard availableMinutes > 0 else {
                 // iOS may have shown a cached screen from when there WAS
-                // balance ("Unlock for X min"). If so, defer — that makes the
-                // system re-query the configuration, redrawing the shield with
-                // the real zero-balance screen. Recording false first means a
+                // balance ("Use my time"). If so, defer — that asks the
+                // system to re-query the configuration for a redraw with the
+                // real zero-balance screen. Recording false first means a
                 // second tap (or a fresh "Go Back" screen) always closes.
                 if let tokenData = try? JSONEncoder().encode(application),
                    storage.shieldShowedBalance(tokenKey: tokenData.base64EncodedString()) == true {
@@ -33,9 +33,9 @@ class ShieldActionExtension: ShieldActionDelegate {
                 return
             }
 
-            Self.log.info("Primary tap: unlocking for \(min(5, availableMinutes), privacy: .public) min (balance \(availableMinutes, privacy: .public) min)")
-            unlock(app: application, minutes: min(5, availableMinutes), storage: storage)
-            // Shield is gone, so .none lets the user proceed into the app
+            Self.log.info("Primary tap: starting spending session (balance \(availableMinutes, privacy: .public) min)")
+            startSession(storage: storage)
+            // Shields are gone, so .none lets the user proceed into the app
             completionHandler(.none)
 
         case .secondaryButtonPressed:
@@ -49,19 +49,16 @@ class ShieldActionExtension: ShieldActionDelegate {
     override func handle(action: ShieldAction,
                          for category: ActivityCategoryToken,
                          completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        // Legacy path for category-based selections: iOS only tells us the
-        // category, so the unlock has to be all-or-nothing.
         switch action {
         case .primaryButtonPressed:
             let storage = SharedStorageService()
-            let availableMinutes = storage.currentBalanceSeconds() / 60
 
-            guard availableMinutes > 0 else {
+            guard storage.currentBalanceSeconds() / 60 > 0 else {
                 completionHandler(.close)
                 return
             }
 
-            unlockAll(minutes: min(5, availableMinutes), storage: storage)
+            startSession(storage: storage)
             completionHandler(.none)
 
         case .secondaryButtonPressed:
@@ -72,69 +69,59 @@ class ShieldActionExtension: ShieldActionDelegate {
         }
     }
 
-    // MARK: - Per-App Unlock
+    // MARK: - Spending Session
 
-    private func unlock(app token: ApplicationToken, minutes: Int, storage: SharedStorageService) {
-        let seconds = minutes * 60
-        let expiry = Date().addingTimeInterval(TimeInterval(seconds))
-
-        // Spend the time — the main app reconciles this event on next open
-        storage.appendEvent(TimeEvent(seconds: seconds, timestamp: Date(), type: .spent))
-
-        // Lift the shield for just this app; the rest stay blocked
-        let store = ManagedSettingsStore()
-        var shielded = store.shield.applications ?? []
-        shielded.remove(token)
-        store.shield.applications = shielded.isEmpty ? nil : shielded
-
-        // Register the unlock so foregrounding Clepsy doesn't re-shield this
-        // app early, and schedule its own re-lock activity
-        let activityName = "unlock_\(UUID().uuidString)"
-        if let tokenData = try? JSONEncoder().encode(token) {
-            storage.registerUnlock(tokenData: tokenData, expiry: expiry, activityName: activityName)
-        }
-        scheduleRelock(named: activityName, at: expiry)
-    }
-
-    // MARK: - Whole-Selection Unlock (categories)
-
-    private func unlockAll(minutes: Int, storage: SharedStorageService) {
-        let seconds = minutes * 60
-        let expiry = Date().addingTimeInterval(TimeInterval(seconds))
-
-        storage.appendEvent(TimeEvent(seconds: seconds, timestamp: Date(), type: .spent))
-        storage.saveUnlockExpiry(expiry)
+    /// Unshields all vice apps and marks a session active. Nothing is spent
+    /// up front — the monitor extension drains the balance one minute per
+    /// minute of actual vice-app usage and re-shields when it hits zero.
+    private func startSession(storage: SharedStorageService) {
+        storage.saveSessionActive(true)
 
         let store = ManagedSettingsStore()
         store.shield.applications = nil
         store.shield.applicationCategories = nil
 
-        let center = DeviceActivityCenter()
-        center.stopMonitoring([DeviceActivityName("unlockWindow")])
-        scheduleRelock(named: "unlockWindow", at: expiry)
+        restartViceMonitoring(storage: storage)
     }
 
-    // MARK: - Re-lock Scheduling
+    /// Starts usage metering with the schedule interval anchored at NOW.
+    /// Thresholds only count usage inside the interval, so a midnight-anchored
+    /// schedule would instantly re-fire for every vice minute already used
+    /// today the moment the session starts, draining the balance in seconds.
+    private func restartViceMonitoring(storage: SharedStorageService) {
+        guard let selection = storage.loadViceSelection() else { return }
 
-    private func scheduleRelock(named name: String, at expiry: Date) {
-        // DeviceActivity requires >= 15 min intervals, so backdate the start;
-        // only the end (re-lock moment) matters.
         let calendar = Calendar.current
-        var start = expiry.addingTimeInterval(-16 * 60)
-        if !calendar.isDate(start, inSameDayAs: expiry) {
-            start = calendar.startOfDay(for: expiry)
+        let now = Date()
+        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
+            ?? now.addingTimeInterval(16 * 60)
+        if end.timeIntervalSince(now) < 15 * 60 {
+            end = now.addingTimeInterval(16 * 60)
         }
 
+        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
         let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: start),
-            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: expiry),
+            intervalStart: calendar.dateComponents(components, from: now),
+            intervalEnd: calendar.dateComponents(components, from: end),
             repeats: false
         )
 
+        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+        for minutes in 1...180 {
+            events[DeviceActivityEvent.Name("spend_\(minutes)")] = DeviceActivityEvent(
+                applications: selection.applicationTokens,
+                categories: selection.categoryTokens,
+                threshold: DateComponents(minute: minutes)
+            )
+        }
+
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName("viceApps")
+        center.stopMonitoring([activity])
         do {
-            try DeviceActivityCenter().startMonitoring(DeviceActivityName(name), during: schedule)
+            try center.startMonitoring(activity, during: schedule, events: events)
         } catch {
-            print("ClepsyShieldAction: Failed to schedule re-lock: \(error)")
+            Self.log.error("Failed to restart vice monitoring: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

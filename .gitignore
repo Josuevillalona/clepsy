@@ -119,3 +119,10 @@ $RECYCLE.BIN/
 
 # XcodeGen generated files
 Generated-Info.plist
+
+# Design kit (web mirror for claude.ai/design)
+design-kit/node_modules/
+design-kit/dist/
+design-kit/demo/demo.js
+design-kit/demo/demo.css
+design-kit/demo/screenshot.png

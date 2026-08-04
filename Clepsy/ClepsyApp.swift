@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct ClepsyApp: App {
@@ -18,6 +19,7 @@ struct ClepsyApp: App {
                     if hasCompletedOnboarding {
                         reapplyBlocksIfNeeded()
                         startDailyMonitoring()
+                        Self.requestNotificationPermission()
                     }
                 }
                 .onChange(of: scenePhase) { newPhase in
@@ -38,13 +40,23 @@ struct ClepsyApp: App {
     private func startDailyMonitoring() {
         let productive = persistenceService.loadProductiveSelection()
         usageTrackingService.startDailyMonitoring(productiveSelection: productive)
+        // Vice spending monitoring is NOT started here — it's anchored to the
+        // start of each spending session so earlier usage today can't count
     }
 
-    /// Re-applies shields unless a paid unlock window is still running —
-    /// otherwise foregrounding Clepsy would cut the unlock short.
+    /// Re-applies shields unless a spending session with remaining balance is
+    /// running — otherwise foregrounding Clepsy would cut the session short.
     private func reapplyBlocksIfNeeded() {
-        guard !SharedStorageService().isUnlockActive else { return }
+        let shared = SharedStorageService()
+        if shared.isSessionActive && shared.currentBalanceSeconds() > 0 { return }
+        // Session over (or balance gone while the monitor missed it) — clean up
+        shared.saveSessionActive(false)
         blockingService.applyViceAppBlocks()
+    }
+
+    /// Needed for the monitor extension's "time's up" notification at re-lock
+    static func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 }
 
@@ -60,6 +72,7 @@ struct ContentView: View {
                 .onChange(of: hasCompletedOnboarding) { completed in
                     if completed {
                         showCelebration = true
+                        ClepsyApp.requestNotificationPermission()
                     }
                 }
         }
