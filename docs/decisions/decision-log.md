@@ -117,7 +117,12 @@ excludes apps with a live unlock, and the whole pass is skipped during a categor
 **Why:** without it, switching to Clepsy to check your balance would kill the unlock you just paid
 for.
 
-### CD-010 · Each unlock gets its own registry entry and re-lock schedule ✅
+### CD-010 · Each unlock gets its own registry entry and re-lock schedule 🗑️ *(removed in `959da5f`)*
+
+> **Superseded by the session model (CD-031).** The `activeUnlocks` registry, `unlockExpiresAt`, and
+> the per-app `unlock_<uuid>` re-lock schedules are all gone. Retained here as the record of what the
+> prepaid design required — useful if per-app granularity ever comes back.
+
 **Code:** `SharedStorageService` — `activeUnlocks`; `ShieldActionExtension.scheduleRelock`
 
 An unlock registers `{token, expiry}` under a unique `unlock_<uuid>` DeviceActivity name. Its
@@ -282,7 +287,7 @@ session every day,"* the earning-activity definition matches the strategy better
 **Also:** the `clepsy_streak_*` keys live in standard `UserDefaults` outside
 `PersistenceService.clearAll()`, so "Reset all data" preserves the streak.
 
-### CD-021 · Unlocks are capped at 5 minutes ❌ *(rejected 2026-08-01 — replaced by CD-031)*
+### CD-021 · Unlocks are capped at 5 minutes 🗑️ *(rejected 2026-08-01, removed in `959da5f`)*
 
 > **Decision:** the 5-minute cap is **not** the intended model. It was a prototype value that hardened.
 > The target model is: **unlock the full accumulated balance, and consume it only while the user is
@@ -305,8 +310,8 @@ with the Intentional Friction principle.
 
 **Cleanup regardless:** the constant lives in one target and the literal in another. They will drift.
 
-### CD-031 · Target spending model: full-balance unlock, metered by actual usage ✅ *(decided 2026-08-01)*
-**Status:** decided, **not built.** Supersedes CD-021 and rewrites CD-014.
+### CD-031 · Spending model: full-balance session, metered by actual usage ✅ **BUILT** *(`959da5f`, 2026-08-04)*
+**Status:** decided 2026-08-01, **shipped 2026-08-04.** Supersedes CD-021 and rewrites CD-014.
 
 **The model:** tapping unlock grants access to the app using the user's *entire* accumulated balance.
 Time is consumed **only while the user is actually in a vice app** — not by wall clock. When the
@@ -327,22 +332,31 @@ window went in as a stopgap:
 - `UsageTrackingService.stopAllMonitoring` already tears `.viceApps` down
 - **Nothing ever calls `startMonitoring(.viceApps, …)`** — that's the whole gap
 
-**Open questions for a spike** (don't skip these — each could change the design):
+**How the four spike questions were answered by the implementation:**
 
-1. **Re-registration on balance change.** Thresholds are fixed when the schedule starts, but the
-   balance moves as the user earns. Does the vice schedule need re-registering whenever the balance
-   changes, and does re-registering reset accumulated vice usage the way it does for earning (CD-008)?
-   If it does, this is materially harder.
-2. **The 15-minute minimum interval** (CD-006) applies here too. A user with 6 minutes banked needs a
-   schedule shorter than the framework's minimum — the backdating trick may or may not cover it.
-3. **Concurrent event limits.** Earning already registers up to 180 events, and CD-012 will raise that.
-   Whether iOS tolerates a second large concurrent schedule needs verifying before committing.
-4. **Re-shield latency.** Threshold firing → shield application is not instantaneous. Some overrun past
-   zero balance is likely; decide what's acceptable and whether to under-grant to compensate.
+1. **Re-registration on balance change — sidestepped.** The schedule registers a fixed
+   `spend_1 … spend_180` ladder once per session and never re-registers. Instead, *every* threshold
+   firing appends a 60-second `.spent` event and then re-reads `currentBalanceSeconds()`; the session
+   ends the moment that hits zero. The balance is evaluated dynamically rather than encoded in the
+   thresholds — which avoids the CD-008 reset trap entirely.
+2. **15-minute minimum — handled.** The interval runs from *now* to 23:59, falling back to
+   `now + 16 min` when less than 15 minutes of the day remain.
+3. **Concurrent event limits — still unverified.** Now 180 earning + 180 spending events across two
+   activities. Nothing has confirmed iOS tolerates this, and CD-012 will push the earning side higher.
+   **Remains an open risk — see R-02.**
+4. **Re-shield latency — solved differently.** Rather than accept overrun, `endSession` momentarily
+   sets `store.application.blockedApplications`, which *terminates* the foreground app, then clears it
+   and applies the normal shield. The user lands on the home screen with a "Time's up" notification.
+   This also sidesteps FB14237883 (CD-007): a shield is never re-presented over a running app, so the
+   stale-cache bug has no opportunity to fire. **Carries its own risk — see R-01.**
 
-**Doc follow-ups:** PRD J4's real-time-deduction P0s become *achievable* rather than *impossible* —
-amend to 1-minute granularity rather than striking them. CD-014's "not implementable" framing and the
-audit's D2 entry both need rewriting.
+**As built:** the shield's primary button is now **"Use My Time"**, subtitled *"You have N min. It only
+counts down while you're in blocked apps."* Tapping it unshields **all** vice apps at once and flags
+`sessionActive` in the App Group. No per-app granularity; nothing charged up front.
+
+**Doc follow-ups:** PRD J4's real-time-deduction P0s are now *implemented* at 1-minute granularity —
+amend the wording, don't strike it. CD-014's "not implementable" framing and the audit's D2 entry are
+both corrected.
 
 ### CD-022 · Daily goal options differ between onboarding and Settings ❓
 Onboarding: `[15, 30, 45, 60, 90, 120]` · Settings: `[15, 30, 60, 120, 180, 240]`
@@ -357,7 +371,10 @@ Neither set matches either spec. Almost certainly unintentional.
 Built to make progress without a physical device — the whole Screen Time surface is untestable in the
 Simulator. These are **not** product behavior, but they currently ship as if they were.
 
-### CD-023 · Dashboard "+5 min / −2 min" test buttons 🧪
+### CD-023 · Dashboard "+5 min / −2 min" test buttons 🗑️ *(removed in `959da5f`)*
+
+> Deleted outright rather than gated. The release-blocker risk is closed.
+
 **Code:** `DashboardView.testActionsSection` (`DashboardView.swift:332`)
 
 Manual balance controls added to exercise the earning/spending UI without DeviceActivity. The 5 and 2
@@ -392,6 +409,109 @@ dependency. That was accurate at `b42ac9d` and wrong since `14984df` — both ar
 
 ---
 
+## D2. Session Model Decisions (`959da5f`, 2026-08-04)
+
+Decisions embedded in the spending-session commit. Logged at the time rather than reconstructed.
+
+### CD-032 · Metering interval is anchored at session start, not midnight ✅ 🔒
+**Code:** `ShieldActionExtension.restartViceMonitoring`, `UsageTrackingService.startViceSpendingMonitoring`
+
+The vice schedule runs from *now* to 23:59, re-registered on every session start.
+
+**Why:** DeviceActivity thresholds count usage accumulated **inside the schedule interval**. A
+midnight-anchored interval would see all of today's earlier vice-app usage already banked, and every
+`spend_N` threshold below that total would fire the instant a session started — draining a full
+balance in seconds. Anchoring at session start makes "minutes used" mean "minutes used *this
+session*." This is the subtlest thing in the spending path and the easiest to accidentally undo.
+
+### CD-033 · Exhaustion hard-blocks momentarily to terminate the app ✅ 🔒
+**Code:** `DeviceActivityMonitorExtension.endSession`
+
+At zero balance: set `store.application.blockedApplications` (which terminates the running app and
+hides its icon) → `Thread.sleep(1.0)` → clear it → apply the normal shield → post "Time's up".
+
+**Why:** two problems solved at once. Applying a shield over a *foreground* app renders the stale
+cached screen from Apple bug FB14237883 (CD-007). Terminating the app first means the next launch is a
+fresh shield presentation, which always renders correctly. It also gives a decisive end to the session
+instead of a soft overrun.
+
+**Trade-off accepted:** a blocking sleep inside an extension with a tight execution budget. See R-01.
+
+### CD-034 · One session unshields everything, with no per-app granularity ✅ ⤴️
+**Code:** `ShieldActionExtension.startSession` — `store.shield.applications = nil`
+
+Tapping "Use My Time" on *any* blocked app unshields *all* vice apps until the balance runs out.
+
+**Why:** the balance is a shared bank (PRD J4 P0, "switch between vice apps using same bank"), and with
+usage metering there's no reason to gate each app separately — time only burns where it's spent. It
+also removes the per-app registry (CD-010) entirely.
+
+**Worth noting for the docs:** this is a real UX shift from the prepaid design. Opening Instagram now
+also unlocks TikTok. Defensible under the shared-bank model, but it means the friction moment happens
+once per session rather than once per app.
+
+### CD-035 · Notifications now exist — but only the "Time's up" one ✅
+**Code:** `ClepsyApp.requestNotificationPermission`, `DeviceActivityMonitorExtension.postTimesUpNotification`,
+`SharedStorageService.notificationsEnabled`
+
+`UNUserNotificationCenter` is now used. Permission is requested on first dashboard appearance and at
+onboarding completion. The monitor extension posts "Time's up ⏳" at exhaustion, gated on a
+`notificationsEnabled` mirror in the App Group (defaulting to true when unwritten).
+
+**Still missing:** milestone notifications (PRD J2 P0), low-balance and weekly-summary (P1). And
+`milestoneInterval` is *still* not persisted — the Settings interval picker remains inert even though
+the toggle above it now controls something real.
+
+---
+
+## F. Open Risks
+
+Introduced or left open by the current implementation. Not decisions — things to watch.
+
+### R-01 · `Thread.sleep(1.0)` inside the monitor extension 🟠
+**Code:** `DeviceActivityMonitorExtension.endSession`
+
+A one-second blocking sleep runs inside a `DeviceActivityMonitor` callback, between setting
+`blockedApplications` and clearing it. These extensions have tight execution budgets.
+
+**Failure mode if the extension is killed mid-sleep:** `blockedApplications` stays set, which doesn't
+just shield the vice apps — it **hides their icons from the home screen entirely**. The user's apps
+appear to have been deleted, with no explanation.
+
+**Existing mitigation:** `AppBlockingService.applyViceAppBlocks` clears `blockedApplications` as a
+safety net — but only when the user next opens Clepsy. A user who doesn't connect "my apps vanished"
+with "open Clepsy" stays stuck.
+
+The sleep is a defensible choice (an async dispatch might not run at all before teardown), so this is
+a risk to measure on device, not an obvious bug. Worth testing: how often does the extension survive
+the full second?
+
+### R-02 · Spend thresholds are capped at 180, coupling them to the earning ceiling 🟠
+**Code:** `restartViceMonitoring` / `startViceSpendingMonitoring` — `for minutes in 1...180`
+
+Only 180 `spend_N` thresholds are registered, so **a session meters at most 180 minutes of vice usage.**
+Past that, no further thresholds fire, the balance stops draining, and the apps stay unshielded until
+`intervalDidEnd` at 23:59.
+
+**Currently harmless** — the earning ceiling (CD-012) caps a day's balance at 180 minutes too, so a
+session can't outlive its thresholds. **But CD-012 says remove the earning ceiling**, and the moment
+earning exceeds 180/day this becomes free unlimited vice access after 180 metered minutes.
+
+**These two ceilings must move together.** Whoever picks up CD-012 has to raise the spend ladder in the
+same change, which also makes R-02's event-count question (CD-031 spike Q3) load-bearing.
+
+### R-03 · The vice-schedule builder is duplicated, and the in-app copy is unreachable 🟡
+`ShieldActionExtension.restartViceMonitoring` (live) and `UsageTrackingService.startViceSpendingMonitoring`
+(unreachable) are near-identical ~35-line implementations of the same schedule.
+
+The in-app copy is reached only via `DashboardViewModel.startSpendingSession`, which is called only by
+`ShieldConfigurationView` — which is itself dead code presented nowhere but its own `#Preview` (CD-028).
+So the entire in-app spending path is dead, and it duplicates the live logic including the CD-032
+anchoring subtlety. Fix one and the other silently rots. Same class of hazard as the old duplicated
+`min(5, …)` constant.
+
+---
+
 ## E. Loose Ends
 
 Small, but each one costs the next reader time.
@@ -423,22 +543,32 @@ implicit in "one threshold = 60 seconds." Harmless, but it implies configurabili
 
 ## Summary: what needs a decision from you
 
-### Resolved 2026-08-01
+### Resolved
 
-| ID | Decision |
-|---|---|
-| CD-012 | **Remove the 180 min/day ceiling.** Needs a spike on how to do it without registering 1,440 events. |
-| CD-018 | **Hourglass = spendable balance.** Code stands; amend PRD J3 and the MVB hourglass rationale. |
+| ID | Decision | Status |
+|---|---|---|
+| CD-012 | **Remove the 180 min/day earning ceiling.** | Decided 08-01 — **not yet done**, and now coupled to R-02 |
+| CD-018 | **Hourglass = spendable balance.** Code stands; amend PRD J3 + MVB. | Decided 08-01 — docs pending |
+| CD-020 | **Streak = goal-completion days.** Code stands; amend PRD J5. | Confirmed 08-01 — docs pending |
+| CD-021 | **5-minute unlock cap rejected.** | Removed in `959da5f` ✅ |
+| CD-031 | **Full-balance session, metered by actual usage.** | Shipped in `959da5f` ✅ |
+| CD-023 | **Test buttons removed** (deleted, not gated). | Removed in `959da5f` ✅ |
 
 ### Still open
 
 | ID | Question | Why it matters |
 |---|---|---|
-| CD-020 | Streak = goal-met days or earning days? | Reply was ambiguous — one word settles it |
-| CD-021 | Is the 5-minute unlock cap intentional? | Looks like a prototype value; changes the core promise |
 | CD-022 | Which daily goal options are canonical? | Two sets; users can strand themselves on 45/90 |
 | CD-024 | Keep or delete `EarningSessionManager`? | Its existence is why the earning spec looks live |
-| CD-001 | Drop category blocking from the PRD permanently? | Incompatible with per-app unlock |
+| CD-001 | Drop category blocking from the PRD permanently? | Incompatible with the session model too |
+
+### Risks to watch
+
+| ID | Risk | Severity |
+|---|---|---|
+| R-01 | `Thread.sleep(1.0)` in the monitor extension; if killed mid-sleep, vice app icons stay hidden | 🟠 |
+| R-02 | Spend ladder capped at 180 — must be raised in lockstep with CD-012 or it becomes free access | 🟠 |
+| R-03 | Vice-schedule builder duplicated; the in-app copy is unreachable dead code | 🟡 |
 
 And three that are documentation-only follow-ups, no decision needed: amend PRD J3 for CD-005,
 amend PRD J4 for CD-014, amend PRD J2 for CD-011.
