@@ -11,9 +11,6 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private static let gold       = UIColor(red: 0.957, green: 0.635, blue: 0.349, alpha: 1) // #F4A259
     private static let muted      = UIColor(white: 0.65, alpha: 1)
 
-    /// Max minutes a single unlock can spend — matches the in-app unlock flow
-    static let maxUnlockMinutes = 5
-
     private func makeConfiguration(appName: String? = nil, token: ApplicationToken? = nil) -> ShieldConfiguration {
         Self.log.info("Shield configuration requested for \(appName ?? "unknown", privacy: .public)")
         let title = appName.map { "\($0) is blocked" } ?? "This app is blocked"
@@ -36,9 +33,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         let secondaryLabel: ShieldConfiguration.Label?
 
         if availableMinutes > 0 {
-            let unlockMinutes = min(Self.maxUnlockMinutes, availableMinutes)
-            subtitleText = "You have \(availableMinutes) min available."
-            primaryText = "Unlock for \(unlockMinutes) min"
+            subtitleText = "You have \(availableMinutes) min. It only counts down while you're in blocked apps."
+            primaryText = "Use My Time"
             secondaryLabel = ShieldConfiguration.Label(text: "Go Back", color: Self.muted)
         } else {
             subtitleText = "No time available yet. Earn minutes in your productive apps, then come back."

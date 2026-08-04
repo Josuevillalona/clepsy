@@ -184,43 +184,30 @@ class SharedStorageService {
         sharedDefaults?.set(delta, forKey: "pendingDeltaSeconds")
     }
 
-    // MARK: - Per-App Unlock Registry
+    // MARK: - Spending Session State
 
-    private let activeUnlocksKey = "activeUnlocks"
-
-    /// Records an active per-app unlock, keyed by the DeviceActivity name of
-    /// its re-lock schedule. Token is stored as encoded Data so this file
-    /// doesn't need ManagedSettings types.
-    func registerUnlock(tokenData: Data, expiry: Date, activityName: String) {
-        var unlocks = unlockRegistry()
-        unlocks[activityName] = ["token": tokenData, "expiry": expiry.timeIntervalSince1970]
-        sharedDefaults?.set(unlocks, forKey: activeUnlocksKey)
+    /// A session starts when the user chooses to use their earned time from a
+    /// shield: all vice apps unshield, and the balance drains only while a
+    /// vice app is actually in use (1-minute usage thresholds). The session
+    /// ends when the balance is exhausted.
+    func saveSessionActive(_ active: Bool) {
+        sharedDefaults?.set(active, forKey: "sessionActive")
     }
 
-    func unlockTokenData(for activityName: String) -> Data? {
-        unlockRegistry()[activityName]?["token"] as? Data
+    var isSessionActive: Bool {
+        sharedDefaults?.bool(forKey: "sessionActive") ?? false
     }
 
-    func removeUnlock(activityName: String) {
-        var unlocks = unlockRegistry()
-        unlocks.removeValue(forKey: activityName)
-        sharedDefaults?.set(unlocks, forKey: activeUnlocksKey)
+    // MARK: - Notifications Toggle Mirror
+
+    /// Mirror of the user's notifications setting so extensions can honor it
+    func saveNotificationsEnabled(_ enabled: Bool) {
+        sharedDefaults?.set(enabled, forKey: "notificationsEnabled")
     }
 
-    /// Token data for unlocks still inside their window; prunes expired entries.
-    func activeUnlockTokenDatas() -> [Data] {
-        var unlocks = unlockRegistry()
-        let now = Date().timeIntervalSince1970
-        let expired = unlocks.filter { (($0.value["expiry"] as? TimeInterval) ?? 0) <= now }
-        if !expired.isEmpty {
-            expired.keys.forEach { unlocks.removeValue(forKey: $0) }
-            sharedDefaults?.set(unlocks, forKey: activeUnlocksKey)
-        }
-        return unlocks.compactMap { $0.value["token"] as? Data }
-    }
-
-    private func unlockRegistry() -> [String: [String: Any]] {
-        (sharedDefaults?.dictionary(forKey: activeUnlocksKey) as? [String: [String: Any]]) ?? [:]
+    var notificationsEnabled: Bool {
+        // Default to enabled when the mirror hasn't been written yet
+        (sharedDefaults?.object(forKey: "notificationsEnabled") as? Bool) ?? true
     }
 
     // MARK: - Last Shield Screen Record
@@ -241,24 +228,4 @@ class SharedStorageService {
         ((sharedDefaults?.dictionary(forKey: shieldStateKey) as? [String: Bool]) ?? [:])[tokenKey]
     }
 
-    // MARK: - Unlock Window State
-
-    func saveUnlockExpiry(_ date: Date?) {
-        if let date {
-            sharedDefaults?.set(date.timeIntervalSince1970, forKey: "unlockExpiresAt")
-        } else {
-            sharedDefaults?.removeObject(forKey: "unlockExpiresAt")
-        }
-    }
-
-    func loadUnlockExpiry() -> Date? {
-        guard let interval = sharedDefaults?.object(forKey: "unlockExpiresAt") as? TimeInterval else { return nil }
-        return Date(timeIntervalSince1970: interval)
-    }
-
-    /// True while a paid unlock window is still running
-    var isUnlockActive: Bool {
-        guard let expiry = loadUnlockExpiry() else { return false }
-        return expiry > Date()
-    }
 }

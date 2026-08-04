@@ -72,20 +72,18 @@ struct ShieldConfigurationView: View {
                 // Action buttons
                 VStack(spacing: 12) {
                     if viewModel.currentBalance.currentSeconds > 0 {
-                        let unlockMinutes = min(5, viewModel.currentBalance.currentSeconds / 60)
-
                         Button(action: {
-                            viewModel.unlockViceApps(seconds: unlockMinutes * 60)
+                            viewModel.startSpendingSession()
                             dismiss()
                         }) {
                             HStack {
                                 Image(systemName: "lock.open.fill")
-                                Text("Unlock for \(unlockMinutes)m")
+                                Text("Use My Time")
                             }
                         }
                         .buttonStyle(.clepsyPrimary)
 
-                        Text("This will deduct \(unlockMinutes)m from your balance")
+                        Text("Time only counts down while you're in blocked apps")
                             .font(.clepsyCaption)
                             .foregroundColor(.clepsyTextSecondary)
                     } else {

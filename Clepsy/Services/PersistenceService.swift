@@ -10,6 +10,8 @@ class PersistenceService: ObservableObject {
         static let lastResetDate = "lastResetDate"
         static let viceSelection = "viceSelection"
         static let productiveSelection = "productiveSelection"
+        static let todayEarned = "todayEarnedSeconds"
+        static let todaySpent = "todaySpentSeconds"
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -50,6 +52,8 @@ class PersistenceService: ObservableObject {
         do {
             let encoded = try JSONEncoder().encode(settings)
             userDefaults.set(encoded, forKey: Keys.userSettings)
+            // Mirror to App Group so the monitor extension can honor the toggle
+            SharedStorageService().saveNotificationsEnabled(settings.notificationsEnabled)
         } catch {
             print("❌ Error encoding UserSettings: \(error)")
         }
@@ -73,11 +77,26 @@ class PersistenceService: ObservableObject {
         return userDefaults.object(forKey: Keys.lastResetDate) as? Date
     }
 
+    // MARK: - Today's Stats
+
+    /// Today's earned/spent totals survive app relaunches — the goal bar and
+    /// streaks are driven by these, not by the (spendable) balance.
+    func saveTodayStats(earnedSeconds: Int, spentSeconds: Int) {
+        userDefaults.set(earnedSeconds, forKey: Keys.todayEarned)
+        userDefaults.set(spentSeconds, forKey: Keys.todaySpent)
+    }
+
+    func loadTodayStats() -> (earnedSeconds: Int, spentSeconds: Int) {
+        (userDefaults.integer(forKey: Keys.todayEarned),
+         userDefaults.integer(forKey: Keys.todaySpent))
+    }
+
     // MARK: - Daily Reset
 
     func performDailyReset() {
         let balance = TimeBalance(currentSeconds: 0)
         saveTimeBalance(balance)
+        saveTodayStats(earnedSeconds: 0, spentSeconds: 0)
         saveLastResetDate(Date())
     }
 
@@ -124,5 +143,7 @@ class PersistenceService: ObservableObject {
         userDefaults.removeObject(forKey: Keys.lastResetDate)
         userDefaults.removeObject(forKey: Keys.viceSelection)
         userDefaults.removeObject(forKey: Keys.productiveSelection)
+        userDefaults.removeObject(forKey: Keys.todayEarned)
+        userDefaults.removeObject(forKey: Keys.todaySpent)
     }
 }

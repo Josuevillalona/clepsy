@@ -44,7 +44,6 @@ struct DashboardView: View {
                         goalProgressCard
                         viceAppsSection
                         productiveAppsSection
-                        testActionsSection
                     }
                     .padding(.horizontal, ClepsySpacing.md)
                     .padding(.bottom, ClepsySpacing.lg)
@@ -325,51 +324,6 @@ struct DashboardView: View {
         .padding()
         .background(Color.clepsySurface)
         .cornerRadius(16)
-    }
-
-    // MARK: - Test Actions
-
-    private var testActionsSection: some View {
-        VStack(alignment: .leading, spacing: ClepsySpacing.sm) {
-            Text("Test Actions")
-                .font(.clepsyCaption)
-                .foregroundColor(.clepsyTextSecondary)
-
-            HStack(spacing: ClepsySpacing.sm) {
-                Button {
-                    viewModel.addTime(seconds: 300)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(.clepsyTeal)
-                        Text("+5 min")
-                            .font(.clepsyCaption)
-                            .foregroundColor(.clepsyTextPrimary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.clepsySurface)
-                    .cornerRadius(10)
-                }
-
-                Button {
-                    viewModel.subtractTime(seconds: 120)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundColor(viewModel.canSpend ? .clepsyOrange : .clepsyTextSecondary)
-                        Text("-2 min")
-                            .font(.clepsyCaption)
-                            .foregroundColor(viewModel.canSpend ? .clepsyTextPrimary : .clepsyTextSecondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.clepsySurface)
-                    .cornerRadius(10)
-                }
-                .disabled(!viewModel.canSpend)
-            }
-        }
     }
 
     // MARK: - Celebration Overlay

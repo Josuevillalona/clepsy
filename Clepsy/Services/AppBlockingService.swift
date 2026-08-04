@@ -15,14 +15,13 @@ class AppBlockingService {
     func applyViceAppBlocks() {
         let selection = persistenceService.loadViceSelection()
 
-        // Apps the user paid to unlock stay unshielded until their window ends
-        var tokens = selection.applicationTokens
-        for data in SharedStorageService().activeUnlockTokenDatas() {
-            if let token = try? JSONDecoder().decode(ApplicationToken.self, from: data) {
-                tokens.remove(token)
-            }
-        }
-        store.shield.applications = tokens.isEmpty ? nil : tokens
+        // Safety net: the monitor extension hard-blocks momentarily to kick
+        // the user out at time's-up; if it died mid-swap, apps would stay
+        // hidden from the home screen until this clears it
+        store.application.blockedApplications = nil
+
+        store.shield.applications = selection.applicationTokens.isEmpty
+            ? nil : selection.applicationTokens
 
         if !selection.categoryTokens.isEmpty {
             store.shield.applicationCategories = .specific(selection.categoryTokens)
@@ -30,6 +29,7 @@ class AppBlockingService {
     }
 
     func removeAllBlocks() {
+        store.application.blockedApplications = nil
         store.shield.applications = nil
         store.shield.applicationCategories = nil
     }

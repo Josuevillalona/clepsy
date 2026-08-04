@@ -50,42 +50,51 @@ class UsageTrackingService: ObservableObject {
         }
     }
 
-    // MARK: - Unlock Window
+    // MARK: - Vice Spending Monitoring
 
-    /// Starts a one-shot schedule that ends in `seconds`. When it ends,
-    /// DeviceActivityMonitorExtension.intervalDidEnd re-applies vice app shields.
-    func startUnlockWindow(seconds: Int) {
+    /// Starts usage metering for a spending session. The schedule interval is
+    /// anchored at NOW: thresholds only count usage inside the interval, so a
+    /// midnight-anchored schedule would instantly re-fire for every vice
+    /// minute already used today the moment a session starts. Runs to end of
+    /// day (or now+16 min near midnight — DeviceActivity's 15-min minimum).
+    func startViceSpendingMonitoring(viceSelection: FamilyActivitySelection) {
+        guard !viceSelection.applicationTokens.isEmpty ||
+              !viceSelection.categoryTokens.isEmpty else { return }
+
         let calendar = Calendar.current
         let now = Date()
-        let end = now.addingTimeInterval(TimeInterval(seconds))
-
-        // DeviceActivity requires intervals of at least 15 minutes, so backdate
-        // the start; only the end time (re-lock moment) matters to us.
-        var start = end.addingTimeInterval(-16 * 60)
-        if !calendar.isDate(start, inSameDayAs: end) {
-            start = calendar.startOfDay(for: end)
+        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
+            ?? now.addingTimeInterval(16 * 60)
+        if end.timeIntervalSince(now) < 15 * 60 {
+            end = now.addingTimeInterval(16 * 60)
         }
 
-        let startComponents = calendar.dateComponents([.hour, .minute, .second], from: start)
-        let endComponents   = calendar.dateComponents([.hour, .minute, .second], from: end)
-
+        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
         let schedule = DeviceActivitySchedule(
-            intervalStart: startComponents,
-            intervalEnd: endComponents,
+            intervalStart: calendar.dateComponents(components, from: now),
+            intervalEnd: calendar.dateComponents(components, from: end),
             repeats: false
         )
 
+        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+        for minutes in 1...180 {
+            events[DeviceActivityEvent.Name("spend_\(minutes)")] = DeviceActivityEvent(
+                applications: viceSelection.applicationTokens,
+                categories: viceSelection.categoryTokens,
+                threshold: DateComponents(minute: minutes)
+            )
+        }
+
         do {
-            center.stopMonitoring([.unlockWindow])
-            try center.startMonitoring(.unlockWindow, during: schedule)
-            sharedStorage.saveUnlockExpiry(end)
+            center.stopMonitoring([.viceApps])
+            try center.startMonitoring(.viceApps, during: schedule, events: events)
         } catch {
-            print("❌ Failed to start unlock window: \(error)")
+            print("❌ Failed to start vice spending monitoring: \(error)")
         }
     }
 
     func stopAllMonitoring() {
-        center.stopMonitoring([.productiveApps, .viceApps, .unlockWindow])
+        center.stopMonitoring([.productiveApps, .viceApps])
         isMonitoringActive = false
     }
 
@@ -112,5 +121,4 @@ class UsageTrackingService: ObservableObject {
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
     static let viceApps       = DeviceActivityName("viceApps")
-    static let unlockWindow   = DeviceActivityName("unlockWindow")
 }

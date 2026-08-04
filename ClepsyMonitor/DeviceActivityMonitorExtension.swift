@@ -2,6 +2,7 @@ import DeviceActivity
 import FamilyControls
 import Foundation
 import ManagedSettings
+import UserNotifications
 
 /// DeviceActivityMonitor extension that runs in a separate process
 /// to track app usage even when Clepsy is not running
@@ -21,53 +22,12 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
 
-        if activity == .unlockWindow {
-            reapplyViceShields()
-        } else if activity.rawValue.hasPrefix("unlock_") {
-            relockApp(activityName: activity.rawValue)
-        }
-    }
+        print("ClepsyMonitor: Interval ended for \(activity.rawValue)")
 
-    /// Re-shields a single app whose per-app unlock window just ended.
-    private func relockApp(activityName: String) {
-        defer { sharedStorage.removeUnlock(activityName: activityName) }
-
-        guard let tokenData = sharedStorage.unlockTokenData(for: activityName),
-              let token = try? JSONDecoder().decode(ApplicationToken.self, from: tokenData) else {
-            // Registry entry missing — fall back to a full re-shield, which
-            // still skips apps inside their own unlock windows
-            reapplyViceShields()
-            return
-        }
-
-        // Skip if the user removed this app from their vice selection mid-window
-        if let selection = sharedStorage.loadViceSelection(),
-           !selection.applicationTokens.contains(token) {
-            return
-        }
-
-        let store = ManagedSettingsStore()
-        var shielded = store.shield.applications ?? []
-        shielded.insert(token)
-        store.shield.applications = shielded
-    }
-
-    private func reapplyViceShields() {
-        sharedStorage.saveUnlockExpiry(nil)
-        guard let selection = sharedStorage.loadViceSelection() else { return }
-
-        // Don't cut short apps still inside their own per-app unlock window
-        var tokens = selection.applicationTokens
-        for data in sharedStorage.activeUnlockTokenDatas() {
-            if let token = try? JSONDecoder().decode(ApplicationToken.self, from: data) {
-                tokens.remove(token)
-            }
-        }
-
-        let store = ManagedSettingsStore()
-        store.shield.applications = tokens.isEmpty ? nil : tokens
-        if !selection.categoryTokens.isEmpty {
-            store.shield.applicationCategories = .specific(selection.categoryTokens)
+        // The session metering interval runs to end of day; if a session is
+        // still open when it lapses, usage would stop counting — end it.
+        if activity == .viceApps && sharedStorage.isSessionActive {
+            endSession()
         }
     }
 
@@ -76,29 +36,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
 
-        // Called when a usage threshold is reached
-        // This is where we track time earned or spent
         print("ClepsyMonitor: Event \(event.rawValue) reached threshold for \(activity.rawValue)")
 
-        handleThresholdEvent(event, activity: activity)
-    }
-
-    override func intervalWillStartWarning(for activity: DeviceActivityName) {
-        super.intervalWillStartWarning(for: activity)
-
-        print("ClepsyMonitor: Interval will start warning for \(activity.rawValue)")
-    }
-
-    override func intervalWillEndWarning(for activity: DeviceActivityName) {
-        super.intervalWillEndWarning(for: activity)
-
-        print("ClepsyMonitor: Interval will end warning for \(activity.rawValue)")
-    }
-
-    // MARK: - Event Handling
-
-    private func handleThresholdEvent(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
-        // Determine if this is a productive app (earning) or vice app (spending)
         if activity == .productiveApps {
             handleProductiveAppEvent(event)
         } else if activity == .viceApps {
@@ -106,42 +45,83 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
     }
 
+    // MARK: - Earning
+
     private func handleProductiveAppEvent(_ event: DeviceActivityEvent.Name) {
         // Thresholds are spaced 1 minute apart, so each firing = 1 minute earned
-        let earnedSeconds = 60
         let timeEvent = TimeEvent(
-            seconds: earnedSeconds,
+            seconds: 60,
             timestamp: Date(),
-            type: .earned,
-            appBundleId: extractBundleId(from: event)
+            type: .earned
         )
 
         sharedStorage.appendEvent(timeEvent)
-        print("ClepsyMonitor: Earned \(earnedSeconds) seconds")
+        print("ClepsyMonitor: Earned 60 seconds")
     }
 
+    // MARK: - Spending (session model)
+
+    /// A vice-app usage minute ticked over. Only drains the balance during an
+    /// active spending session: outside a session vice apps are shielded, so
+    /// any firing is retroactive usage from before blocking began (thresholds
+    /// count cumulative whole-day usage) and must be ignored.
     private func handleViceAppEvent(_ event: DeviceActivityEvent.Name) {
-        // User spent time in a vice app - deduct from balance
-        let spentSeconds = 60 // 1-minute tracking for vice apps
-        let timeEvent = TimeEvent(
-            seconds: spentSeconds,
-            timestamp: Date(),
-            type: .spent,
-            appBundleId: extractBundleId(from: event)
-        )
+        guard sharedStorage.isSessionActive else {
+            print("ClepsyMonitor: Ignoring \(event.rawValue) — no active session")
+            return
+        }
 
-        sharedStorage.appendEvent(timeEvent)
-        print("ClepsyMonitor: Spent \(spentSeconds) seconds")
+        sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
+        print("ClepsyMonitor: Spent 60 seconds")
+
+        if sharedStorage.currentBalanceSeconds() <= 0 {
+            endSession()
+        }
     }
 
-    private func extractBundleId(from event: DeviceActivityEvent.Name) -> String? {
-        // Event names may be formatted to include app identifier
-        // This is a placeholder - actual implementation depends on how events are configured
-        let rawValue = event.rawValue
-        if rawValue.contains(".") {
-            return rawValue
+    /// Balance exhausted: kick the user out of the vice app, then re-shield.
+    /// Applying a shield over a foreground app renders a stale cached screen
+    /// (Apple bug FB14237883), so instead we hard-block momentarily — which
+    /// terminates the running app — and land the user on the home screen with
+    /// the notification explaining why. Their next launch is a fresh shield
+    /// presentation, which always shows the correct zero-balance screen.
+    private func endSession() {
+        sharedStorage.saveSessionActive(false)
+        postTimesUpNotification()
+
+        guard let selection = sharedStorage.loadViceSelection() else { return }
+        let store = ManagedSettingsStore()
+
+        let apps = Set(selection.applicationTokens.map { Application(token: $0) })
+        if !apps.isEmpty {
+            store.application.blockedApplications = apps
+            // Give the system a beat to terminate the app before swapping the
+            // hard block (which hides home-screen icons) for the normal shield
+            Thread.sleep(forTimeInterval: 1.0)
+            store.application.blockedApplications = nil
         }
-        return nil
+
+        store.shield.applications = selection.applicationTokens.isEmpty
+            ? nil : selection.applicationTokens
+        if !selection.categoryTokens.isEmpty {
+            store.shield.applicationCategories = .specific(selection.categoryTokens)
+        }
+    }
+
+    private func postTimesUpNotification() {
+        guard sharedStorage.notificationsEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Time's up ⏳"
+        content.body = "You've used all your earned time — apps are locked again. Tap to earn more in Clepsy."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "timesup_\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 }
 
@@ -150,5 +130,4 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
     static let viceApps       = DeviceActivityName("viceApps")
-    static let unlockWindow   = DeviceActivityName("unlockWindow")
 }
