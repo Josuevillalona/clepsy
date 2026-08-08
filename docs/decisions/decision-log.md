@@ -8,6 +8,11 @@ missing layer between the PRD ("what we want") and the code ("what it does").
 (`32507f5` → `14984df`), then classified. Entries marked ❓ are places where the code contains a
 decision that may not have been made deliberately — those need your call.
 
+> **Mirrored in Linear:** https://linear.app/pursuitjosue/document/clepsy-decision-log-740f5dc501c9
+> That copy holds the decisions and their reasons, for people who don't read the repo. **This file is
+> authoritative for code specifics** (file paths, line references, exact behavior) and must change in
+> the same PR as the code it describes. Update both when a decision itself changes.
+
 **Status legend**
 
 | | Meaning |
