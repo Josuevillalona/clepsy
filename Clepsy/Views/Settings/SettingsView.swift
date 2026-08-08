@@ -196,7 +196,9 @@ struct GoalPickerSheet: View {
     @Binding var selectedGoal: Int
     @Binding var isPresented: Bool
 
-    private let goalOptions = [15, 30, 60, 120, 180, 240]
+    // Must match DailyGoalView's options — a goal picked during onboarding
+    // has to remain selectable here
+    private let goalOptions = [15, 30, 45, 60, 90, 120]
 
     var body: some View {
         NavigationStack {

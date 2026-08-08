@@ -1,5 +1,20 @@
 import Foundation
 
+/// ⚠️ NOT WIRED UP — nothing in the app calls this class.
+///
+/// It implements the session-based earning model from `docs/specs/earning.md`:
+/// a 60-second warmup before tracking starts, pause/resume with a 2-minute
+/// timeout, and crediting the balance every 5 minutes. That model needs app
+/// lifecycle events, which a background extension can't observe.
+///
+/// Live earning works differently: `UsageTrackingService` registers
+/// DeviceActivity thresholds every minute of productive-app use, and
+/// `DeviceActivityMonitorExtension` credits 60 seconds per firing.
+/// See decision CD-011 in `docs/decisions/decision-log.md`.
+///
+/// Kept as a reference implementation in case session-based earning is ever
+/// revisited on-device (CD-024). Do not assume this file describes current
+/// behavior — its tests pass, but the app never runs it.
 class EarningSessionManager {
     private var currentSessionId: UUID?
     private var currentSessionStartTime: Date?

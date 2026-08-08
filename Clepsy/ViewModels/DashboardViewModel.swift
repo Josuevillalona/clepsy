@@ -16,12 +16,10 @@ class DashboardViewModel: ObservableObject {
     @Published var showStreakBanner: Bool = false
 
     private let persistenceService: PersistenceService
-    private let blockingService: AppBlockingService
     private let usageTrackingService = UsageTrackingService()
 
     init(persistenceService: PersistenceService = PersistenceService()) {
         self.persistenceService = persistenceService
-        self.blockingService = AppBlockingService(persistenceService: persistenceService)
         self.currentBalance = persistenceService.loadTimeBalance()
         let settings = persistenceService.loadUserSettings()
         self.dailyGoalSeconds = settings.dailyGoalMinutes * 60
@@ -54,18 +52,6 @@ class DashboardViewModel: ObservableObject {
         todaySpent += actualSubtracted
         persistenceService.saveTimeBalance(currentBalance)
         persistenceService.saveTodayStats(earnedSeconds: todayEarned, spentSeconds: todaySpent)
-    }
-
-    /// Starts a spending session: all vice apps unshield, and the balance
-    /// drains only while one of them is actually in use (the monitor
-    /// extension deducts per usage minute and re-shields at zero).
-    func startSpendingSession() {
-        guard canSpend else { return }
-        SharedStorageService().saveSessionActive(true)
-        blockingService.removeAllBlocks()
-        // Metering interval is anchored at now, so only usage from this
-        // moment on can fire spend thresholds
-        usageTrackingService.startViceSpendingMonitoring(viceSelection: viceSelection)
     }
 
     var canSpend: Bool {

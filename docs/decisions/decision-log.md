@@ -364,7 +364,7 @@ counts down while you're in blocked apps."* Tapping it unshields **all** vice ap
 amend the wording, don't strike it. CD-014's "not implementable" framing and the audit's D2 entry are
 both corrected.
 
-### CD-022 · Daily goal options differ between onboarding and Settings ✅ *(decided 2026-08-04)*
+### CD-022 · Daily goal options differ between onboarding and Settings ✅ **DONE** *(decided + fixed 2026-08-04)*
 
 > **Decision:** **15 / 30 / 45 / 60 / 90 / 120** minutes is canonical — onboarding's set wins.
 > `SettingsView.GoalPickerSheet` changes from `[15,30,60,120,180,240]` to match. Gentler ladder, and
@@ -395,7 +395,7 @@ are arbitrary test amounts, not product values.
 user-facing "Test Actions" section that grants free balance. Gate or remove before any external
 build. (Guarding them is a 2-line change.)
 
-### CD-024 · `EarningSessionManager` is a spec-faithful reference implementation, unused ✅ *(decided 2026-08-04: keep, clearly marked)*
+### CD-024 · `EarningSessionManager` is a spec-faithful reference implementation, unused ✅ **DONE** *(decided + marked 2026-08-04)*
 
 > **Decision:** keep the file, but mark it unmistakably as not live. A header comment stating it is
 > never called, with a pointer to CD-011 for what actually runs. It stays compiled (so its tests keep
@@ -578,7 +578,10 @@ cap on either side. CD-037 proposes one mechanism (re-arming ladders) that remov
 lands, the safe interim state is the current one: *leave the earning cap in place*, because it's the
 only thing keeping the spending exploit unreachable.
 
-### R-03 · The vice-schedule builder is duplicated, and the in-app copy is unreachable 🟡
+### R-03 · The vice-schedule builder is duplicated, and the in-app copy is unreachable ✅ **RESOLVED** *(2026-08-04)*
+
+> **Fixed.** Deleted `ShieldConfigurationView` (the dead in-app block screen), `DashboardViewModel.startSpendingSession`, and `UsageTrackingService.startViceSpendingMonitoring`. A comment now sits where the duplicate lived, pointing at the live implementation and explaining why there deliberately isn't a second copy. `ShieldActionExtension.restartViceMonitoring` is now the only place that builds the session schedule.
+
 `ShieldActionExtension.restartViceMonitoring` (live) and `UsageTrackingService.startViceSpendingMonitoring`
 (unreachable) are near-identical ~35-line implementations of the same schedule.
 
@@ -602,7 +605,8 @@ wiring in `65f849c`.
 Declared in `project.yml`. `9db7dd7` added *"wire productive app tap to launch via URL scheme"*; the
 tappable app cards were later removed. Nothing opens a URL anywhere in the codebase now.
 
-### CD-028 · In-app `ShieldConfigurationView` is superseded by the extension 🧹
+### CD-028 · In-app `ShieldConfigurationView` is superseded by the extension ✅ **DONE** *(deleted 2026-08-04)*
+
 `Clepsy/Views/Shield/ShieldConfigurationView.swift` — plan Task 23's SwiftUI shield, never presented.
 Notably it *does* implement several things the real shield can't (mascot, earned-today, "Earn Time
 Now"), which is why the specs read as though those exist.
@@ -636,8 +640,10 @@ implicit in "one threshold = 60 seconds." Harmless, but it implies configurabili
 
 | ID | Decision |
 |---|---|
-| CD-024 | **Keep `EarningSessionManager`**, marked unmistakably as not live. |
-| CD-022 | **15 / 30 / 45 / 60 / 90 / 120** is canonical; Settings changes to match onboarding. |
+| CD-024 | **Keep `EarningSessionManager`**, marked unmistakably as not live. ✅ done |
+| CD-022 | **15 / 30 / 45 / 60 / 90 / 120** is canonical; Settings now matches onboarding. ✅ done |
+| CD-037 | **Re-arming ladders** approved as the direction for unlimited earning/spending. Verification deferred to a ticket. |
+| R-03 | Dead in-app spending path deleted. ✅ done |
 | CD-001 | **Apps-only is permanent.** Strike PRD J1 P2; remove the unreachable category paths. |
 | CD-036 | **The daily goal is a floor, not a ceiling.** Neither `180` is a product decision. |
 
@@ -652,8 +658,11 @@ implicit in "one threshold = 60 seconds." Harmless, but it implies configurabili
 | ID | Risk | Severity |
 |---|---|---|
 | R-01 | `Thread.sleep(1.0)` in the monitor extension; if killed mid-sleep, vice app icons stay hidden | 🟠 |
-| R-02 | Spend ladder capped at 180 — must be raised in lockstep with CD-012 or it becomes free access | 🟠 |
-| R-03 | Vice-schedule builder duplicated; the in-app copy is unreachable dead code | 🟡 |
+| R-02 | Spend ladder capped at 180 — must be lifted in lockstep with CD-012 or it becomes free access | 🟠 |
+| ~~R-03~~ | ~~Duplicated vice-schedule builder~~ | ✅ resolved |
+
+**Interim safety note:** until CD-037 is verified on a device, **leave the 180 earning cap in place.**
+It is currently the only thing making R-02 unreachable.
 
 And three that are documentation-only follow-ups, no decision needed: amend PRD J3 for CD-005,
 amend PRD J4 for CD-014, amend PRD J2 for CD-011.
