@@ -36,6 +36,16 @@ the documentation.
 *"Error States and Hardening" was retired — its issues moved to the surface each one actually belongs
 to.*
 
+## How the backlog is grouped
+
+- **Projects = surfaces.** Each description holds the decisions governing that surface.
+- **Milestones = phases.** Onboarding, Spending Sessions and Shield have **"1 · Stabilize"** (fix what
+  shipped) and **"2 · V2 Planning Tool"** (new direction). Brand has the V2 milestone only.
+- **Label `V2 Direction`** cuts across projects — filter by it to see all V2 work in one list.
+- **Parent issues** hold multi-screen features: CLE-36 (intention-first onboarding, 5 screens) and
+  CLE-37 (planned sessions, 3 parts).
+- **Direction doc:** [Product Direction: Clepsy as a Planning Tool](https://linear.app/pursuitjosue/document/product-direction-clepsy-as-a-planning-tool-725e727868a0)
+
 ---
 
 ## What's still in the repo

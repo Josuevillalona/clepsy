@@ -459,6 +459,8 @@ instead of a soft overrun.
 **Trade-off accepted:** a blocking sleep inside an extension with a tight execution budget. See R-01.
 
 ### CD-034 · One session unshields everything, with no per-app granularity ✅ ⤴️
+
+> **Reopened 2026-11-03 — V2 direction.** The owner wants per-app planned sessions: pick the app and the amount in Clepsy, after a grounding step, before scrolling. Tracked as CLE-37 (Linear doc "Product Direction: Clepsy as a Planning Tool"). Current behavior stands until that ships.
 **Code:** `ShieldActionExtension.startSession` — `store.shield.applications = nil`
 
 Tapping "Use My Time" on *any* blocked app unshields *all* vice apps until the balance runs out.
