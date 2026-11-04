@@ -109,6 +109,17 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertNil(EarnRules.minute(fromEventName: "earn_x"))
     }
 
+    // MARK: - Formatting
+
+    func testGoalFormatting() {
+        XCTAssertEqual(GoalFormatting.minutes(45), "45 min")
+        XCTAssertEqual(GoalFormatting.minutes(60), "1h")
+        XCTAssertEqual(GoalFormatting.minutes(90), "1h 30m")
+        XCTAssertEqual(GoalFormatting.plan(.default), "Same goal · 30 min")
+        let buildUp = GoalPlan(mode: .buildUp(target: 45), currentGoal: 20, consecutiveReached: 0, pendingGoal: nil)
+        XCTAssertEqual(GoalFormatting.plan(buildUp), "Build up · 20 min → 45 min")
+    }
+
     // MARK: - Day keys
 
     func testDayKeyFormat() {

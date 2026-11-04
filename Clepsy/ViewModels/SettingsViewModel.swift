@@ -5,12 +5,12 @@ import FamilyControls
 @MainActor
 class SettingsViewModel: ObservableObject {
 
-    @Published var dailyGoalMinutes: Int = 30 {
+    @Published var notificationsEnabled: Bool = true {
         didSet { saveSettings() }
     }
 
-    @Published var notificationsEnabled: Bool = true {
-        didSet { saveSettings() }
+    @Published var hapticsEnabled: Bool = true {
+        didSet { SharedStorageService().saveHapticsEnabled(hapticsEnabled) }
     }
 
     @Published var milestoneInterval: Int = 15 {
@@ -47,7 +47,6 @@ class SettingsViewModel: ObservableObject {
 
     // MARK: - UI State
 
-    @Published var showGoalPicker = false
     @Published var showIntervalPicker = false
     @Published var showResetConfirmation = false
     @Published var showCategoryWarning = false
@@ -59,15 +58,6 @@ class SettingsViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
-    var formattedDailyGoal: String {
-        if dailyGoalMinutes < 60 {
-            return "\(dailyGoalMinutes) min"
-        } else if dailyGoalMinutes == 60 {
-            return "1 hour"
-        } else {
-            return "\(dailyGoalMinutes / 60) hours"
-        }
-    }
 
     var formattedMilestoneInterval: String {
         switch milestoneInterval {
@@ -106,7 +96,7 @@ class SettingsViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         let settings = persistenceService.loadUserSettings()
-        dailyGoalMinutes = settings.dailyGoalMinutes
+        hapticsEnabled = SharedStorageService().hapticsEnabled
         notificationsEnabled = settings.notificationsEnabled
         viceSelection = persistenceService.loadViceSelection()
         productiveSelection = persistenceService.loadProductiveSelection()
@@ -114,14 +104,13 @@ class SettingsViewModel: ObservableObject {
 
     private func saveSettings() {
         var settings = persistenceService.loadUserSettings()
-        settings.dailyGoalMinutes = dailyGoalMinutes
         settings.notificationsEnabled = notificationsEnabled
         persistenceService.saveUserSettings(settings)
     }
 
     func resetAllData() {
         persistenceService.clearAll()
-        dailyGoalMinutes = 30
+        hapticsEnabled = true
         notificationsEnabled = true
         milestoneInterval = 15
         viceSelection = FamilyActivitySelection()
