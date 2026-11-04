@@ -12,6 +12,10 @@ class PersistenceService: ObservableObject {
         static let productiveSelection = "productiveSelection"
         static let todayEarned = "todayEarnedSeconds"
         static let todaySpent = "todaySpentSeconds"
+        static let goalPlan = "goalPlan"
+        static let streak = "streakState"
+        static let badges = "badges"
+        static let unseenBadges = "unseenBadges"
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -100,6 +104,37 @@ class PersistenceService: ObservableObject {
         saveLastResetDate(Date())
     }
 
+    // MARK: - Goal Plan, Streak, Badges
+
+    func saveGoalPlan(_ plan: GoalPlan) { save(plan, key: Keys.goalPlan) }
+
+    func loadGoalPlan() -> GoalPlan? { load(GoalPlan.self, key: Keys.goalPlan) }
+
+    func saveStreak(_ streak: StreakState) { save(streak, key: Keys.streak) }
+
+    func loadStreak() -> StreakState { load(StreakState.self, key: Keys.streak) ?? StreakState() }
+
+    func saveBadges(_ badges: [BadgeID: Date]) { save(badges, key: Keys.badges) }
+
+    func loadBadges() -> [BadgeID: Date] { load([BadgeID: Date].self, key: Keys.badges) ?? [:] }
+
+    /// Earned at rollover but not yet shown on a claim screen
+    func saveUnseenBadges(_ badges: [BadgeID]) { save(badges, key: Keys.unseenBadges) }
+
+    func loadUnseenBadges() -> [BadgeID] { load([BadgeID].self, key: Keys.unseenBadges) ?? [] }
+
+    private func save<T: Encodable>(_ value: T, key: String) {
+        do {
+            userDefaults.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            print("❌ Error encoding \(key): \(error)")
+        }
+    }
+
+    private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        userDefaults.data(forKey: key).flatMap { try? JSONDecoder().decode(type, from: $0) }
+    }
+
     // MARK: - FamilyActivitySelection
 
     func saveFamilyActivitySelection(_ selection: FamilyActivitySelection, key: String) {
@@ -145,5 +180,9 @@ class PersistenceService: ObservableObject {
         userDefaults.removeObject(forKey: Keys.productiveSelection)
         userDefaults.removeObject(forKey: Keys.todayEarned)
         userDefaults.removeObject(forKey: Keys.todaySpent)
+        userDefaults.removeObject(forKey: Keys.goalPlan)
+        userDefaults.removeObject(forKey: Keys.streak)
+        userDefaults.removeObject(forKey: Keys.badges)
+        userDefaults.removeObject(forKey: Keys.unseenBadges)
     }
 }
