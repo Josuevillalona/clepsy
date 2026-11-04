@@ -61,10 +61,14 @@ struct DashboardView: View {
             viewModel.refreshGoal()
             viewModel.syncPendingEvents()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            // Open across midnight: switch the report to the new day
+            reportRefreshDate = Date()
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 viewModel.syncPendingEvents()
-                // The report view only renders once; a new filter on every
+                // The report view only renders once; recreating it on every
                 // foreground makes iOS hand the extension fresh usage data
                 reportRefreshDate = Date()
             }
@@ -262,12 +266,14 @@ struct DashboardView: View {
     }
 
     private var productiveTodayFilter: DeviceActivityFilter {
-        let start = Calendar.current.startOfDay(for: reportRefreshDate)
-        let today = DateInterval(start: start, end: max(reportRefreshDate, start))
+        let today = Calendar.current.dateInterval(of: .day, for: reportRefreshDate)
+            ?? DateInterval(start: reportRefreshDate, duration: 0)
+        // Earning is per device, so count only this one
+        let device: DeviceActivityData.Device.Model = UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
         return DeviceActivityFilter(
             segment: .daily(during: today),
             users: .all,
-            devices: .init([.iPhone]),
+            devices: .init([device]),
             applications: viewModel.productiveSelection.applicationTokens,
             categories: viewModel.productiveSelection.categoryTokens
         )

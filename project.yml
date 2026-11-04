@@ -135,6 +135,7 @@ targets:
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
+      - path: Clepsy/Services/ViceMonitoring.swift
     info:
       path: ClepsyShieldAction/Generated-Info.plist
       properties:

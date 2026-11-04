@@ -32,7 +32,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             print("ClepsyMonitor: Ignoring interval end from a monitoring restart")
             return
         }
-        endSession()
+        endSession(reason: .dayEnded)
     }
 
     // MARK: - Threshold Events
@@ -83,22 +83,23 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         print("ClepsyMonitor: Spent 60 seconds")
 
         if outcome == .spendAndEndSession {
-            endSession()
+            endSession(reason: .balanceExhausted)
         }
     }
 
-    /// Balance exhausted: kick the user out of the vice app, then re-shield.
+    /// Session over (balance exhausted, or the day's interval lapsed): kick
+    /// the user out of the vice app, then re-shield.
     /// Applying a shield over a foreground app renders a stale cached screen
     /// (Apple bug FB14237883), so instead we hard-block momentarily — which
     /// terminates the running app — and land the user on the home screen with
     /// the notification explaining why. Their next launch is a fresh shield
     /// presentation, which always shows the correct zero-balance screen.
-    private func endSession() {
+    private func endSession(reason: SessionRules.EndReason) {
         sharedStorage.saveSessionActive(false)
 
         // Posted last: a banner that appears while the app is being closed
         // gets swept away by the transition, so you'd hear it but not see it
-        defer { postTimesUpNotification() }
+        defer { postSessionEndedNotification(reason: reason) }
 
         guard let selection = sharedStorage.loadViceSelection() else { return }
         let store = ManagedSettingsStore()
@@ -119,12 +120,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
     }
 
-    private func postTimesUpNotification() {
+    private func postSessionEndedNotification(reason: SessionRules.EndReason) {
         guard sharedStorage.notificationsEnabled else { return }
 
+        let copy = SessionRules.endNotification(for: reason)
         let content = UNMutableNotificationContent()
-        content.title = "Time's up ⏳"
-        content.body = "You've used all your earned time — apps are locked again. Tap to earn more in Clepsy."
+        content.title = copy.title
+        content.body = copy.body
         content.sound = .default
 
         let request = UNNotificationRequest(

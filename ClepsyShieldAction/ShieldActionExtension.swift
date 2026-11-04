@@ -85,41 +85,9 @@ class ShieldActionExtension: ShieldActionDelegate {
         store.shield.applications = nil
         store.shield.applicationCategories = nil
 
-        restartViceMonitoring(storage: storage)
-    }
-
-    /// Starts usage metering with the schedule interval anchored at NOW.
-    /// Thresholds only count usage inside the interval, so a midnight-anchored
-    /// schedule would instantly re-fire for every vice minute already used
-    /// today the moment the session starts, draining the balance in seconds.
-    private func restartViceMonitoring(storage: SharedStorageService) {
         guard let selection = storage.loadViceSelection() else { return }
-
-        let calendar = Calendar.current
-        let window = SessionRules.meteringWindow(startingAt: Date(), calendar: calendar)
-        storage.saveSessionMeteringEnd(window.end)
-
-        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
-        let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents(components, from: window.start),
-            intervalEnd: calendar.dateComponents(components, from: window.end),
-            repeats: false
-        )
-
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for minutes in 1...180 {
-            events[DeviceActivityEvent.Name("spend_\(minutes)")] = DeviceActivityEvent(
-                applications: selection.applicationTokens,
-                categories: selection.categoryTokens,
-                threshold: DateComponents(minute: minutes)
-            )
-        }
-
-        let center = DeviceActivityCenter()
-        let activity = DeviceActivityName("viceApps")
-        center.stopMonitoring([activity])
         do {
-            try center.startMonitoring(activity, during: schedule, events: events)
+            try ViceMonitoring.restart(for: selection, storage: storage)
         } catch {
             Self.log.error("Failed to restart vice monitoring: \(error.localizedDescription, privacy: .public)")
         }

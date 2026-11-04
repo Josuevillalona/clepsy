@@ -42,6 +42,24 @@ enum SessionRules {
         case spendAndEndSession
     }
 
+    enum EndReason: Equatable {
+        case balanceExhausted
+        /// The metering interval lapsed at 23:59 with time left
+        case dayEnded
+    }
+
+    /// Title and body for the notification posted when a session ends
+    static func endNotification(for reason: EndReason) -> (title: String, body: String) {
+        switch reason {
+        case .balanceExhausted:
+            return ("Time's up ⏳",
+                    "You've used all your earned time — apps are locked again. Tap to earn more in Clepsy.")
+        case .dayEnded:
+            return ("That's a wrap for today 🌙",
+                    "Apps are locked again — your time resets at midnight. Earn fresh minutes in Clepsy tomorrow.")
+        }
+    }
+
     /// A vice-app usage minute ticked over; each one spends 60 seconds
     static func viceMinuteOutcome(sessionActive: Bool, balanceSeconds: Int) -> ViceMinuteOutcome {
         guard sessionActive else { return .ignore }

@@ -4,15 +4,24 @@ import XCTest
 final class SharedStorageServiceTests: XCTestCase {
     var sut: SharedStorageService!
 
+    // Not a real App Group: its own UserDefaults suite and temp event file
+    static let testSuite = "test.clepsy.sharedstorage"
+
     override func setUp() {
         super.setUp()
-        sut = SharedStorageService()
-        sut.clearEvents()
+        Self.reset()
+        sut = SharedStorageService(appGroup: Self.testSuite)
     }
 
     override func tearDown() {
         sut.clearEvents()
+        Self.reset()
         super.tearDown()
+    }
+
+    static func reset() {
+        UserDefaults(suiteName: testSuite)?.removePersistentDomain(forName: testSuite)
+        SharedStorageService(appGroup: testSuite).clearEvents()
     }
 
     func testAppendAndGetEvents() {
@@ -97,7 +106,6 @@ final class SharedStorageServiceTests: XCTestCase {
         sut.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
 
         XCTAssertEqual(sut.currentBalanceSeconds(), 60)
-        sut.saveBalanceSeconds(0)
     }
 
     func testFastBalanceMatchesCurrentBalance() {
@@ -107,7 +115,6 @@ final class SharedStorageServiceTests: XCTestCase {
         sut.appendEvent(TimeEvent(seconds: 120, timestamp: Date(), type: .spent))
 
         XCTAssertEqual(sut.fastBalanceSeconds(), sut.currentBalanceSeconds())
-        sut.saveBalanceSeconds(0)
     }
 
     func testBalanceNeverGoesNegative() {
@@ -119,20 +126,25 @@ final class SharedStorageServiceTests: XCTestCase {
     }
 
     func testSessionActiveRoundTrip() {
-        let original = sut.isSessionActive
+        XCTAssertFalse(sut.isSessionActive)
         sut.saveSessionActive(true)
         XCTAssertTrue(sut.isSessionActive)
         sut.saveSessionActive(false)
         XCTAssertFalse(sut.isSessionActive)
-        sut.saveSessionActive(original)
     }
 
     func testSessionMeteringEndRoundTrip() {
-        let original = sut.sessionMeteringEnd
+        XCTAssertNil(sut.sessionMeteringEnd)
         let end = Date(timeIntervalSince1970: 1_793_779_140)
         sut.saveSessionMeteringEnd(end)
         XCTAssertEqual(sut.sessionMeteringEnd, end)
-        if let original { sut.saveSessionMeteringEnd(original) }
+    }
+
+    func testTestSuiteDoesNotTouchRealAppGroup() {
+        let real = SharedStorageService()
+        let realBalance = real.currentBalanceSeconds()
+        sut.saveBalanceSeconds(9_999)
+        XCTAssertEqual(real.currentBalanceSeconds(), realBalance)
     }
 
     func testShieldScreenRecordIsPerApp() {

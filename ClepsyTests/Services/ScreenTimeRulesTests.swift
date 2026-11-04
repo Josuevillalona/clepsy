@@ -74,6 +74,19 @@ final class SessionRulesTests: XCTestCase {
     func testViceMinuteAtZeroBalanceEndsSession() {
         XCTAssertEqual(SessionRules.viceMinuteOutcome(sessionActive: true, balanceSeconds: 0), .spendAndEndSession)
     }
+
+    // MARK: - End notification
+
+    func testBalanceExhaustedSaysTimeIsUsed() {
+        XCTAssertTrue(SessionRules.endNotification(for: .balanceExhausted).body.contains("used all your earned time"))
+    }
+
+    func testDayEndDoesNotClaimTimeWasUsed() {
+        // The 23:59 lapse can happen with minutes left
+        let copy = SessionRules.endNotification(for: .dayEnded)
+        XCTAssertFalse(copy.body.contains("used all"))
+        XCTAssertTrue(copy.body.contains("midnight"))
+    }
 }
 
 final class ShieldRulesTests: XCTestCase {

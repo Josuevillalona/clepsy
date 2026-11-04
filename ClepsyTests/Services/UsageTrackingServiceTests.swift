@@ -10,17 +10,21 @@ final class UsageTrackingServiceTests: XCTestCase {
     var sharedStorage: SharedStorageService!
     var persistence: PersistenceService!
 
+    static let testSuite = "test.clepsy.usagetracking"
+
     override func setUp() {
         super.setUp()
-        sut = UsageTrackingService()
-        sharedStorage = SharedStorageService()
+        UserDefaults(suiteName: Self.testSuite)?.removePersistentDomain(forName: Self.testSuite)
+        sharedStorage = SharedStorageService(appGroup: Self.testSuite)
         sharedStorage.clearEvents()
+        sut = UsageTrackingService(sharedStorage: sharedStorage)
         persistence = PersistenceService(suiteName: "test.usagetracking")!
         persistence.clearAll()
     }
 
     override func tearDown() {
         sharedStorage.clearEvents()
+        UserDefaults(suiteName: Self.testSuite)?.removePersistentDomain(forName: Self.testSuite)
         persistence.clearAll()
         super.tearDown()
     }
@@ -33,9 +37,8 @@ final class UsageTrackingServiceTests: XCTestCase {
     }
 
     func testViceMonitoringWithNoViceAppsDoesNotRecordASession() {
-        let before = sharedStorage.sessionMeteringEnd
         sut.startViceSpendingMonitoring(viceSelection: FamilyActivitySelection())
-        XCTAssertEqual(sharedStorage.sessionMeteringEnd, before)
+        XCTAssertNil(sharedStorage.sessionMeteringEnd)
     }
 
     // MARK: - Event sync
@@ -81,6 +84,8 @@ final class UsageTrackingServiceTests: XCTestCase {
         XCTAssertEqual(ReportFormatting.duration(seconds: 0), "0s")
         XCTAssertEqual(ReportFormatting.duration(seconds: 40), "40s")
         XCTAssertEqual(ReportFormatting.duration(seconds: 160), "2m 40s")
+        XCTAssertEqual(ReportFormatting.duration(seconds: 3600), "1h 0m")
+        XCTAssertEqual(ReportFormatting.duration(seconds: 5712), "1h 35m")
         XCTAssertEqual(ReportFormatting.duration(seconds: -5), "0s")
     }
 }
