@@ -28,10 +28,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // still open when it lapses, usage would stop counting — end it.
         guard activity == .viceApps && sharedStorage.isSessionActive else { return }
 
-        // Starting a session restarts monitoring, and stopping the previous
-        // interval lands here too — after the new session is already marked
-        // active. Only a real lapse (at or past the scheduled end) counts.
-        if let end = sharedStorage.sessionMeteringEnd, Date() < end.addingTimeInterval(-60) {
+        guard SessionRules.isRealIntervalEnd(now: Date(), scheduledEnd: sharedStorage.sessionMeteringEnd) else {
             print("ClepsyMonitor: Ignoring interval end from a monitoring restart")
             return
         }
@@ -73,7 +70,11 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     /// any firing is retroactive usage from before blocking began (thresholds
     /// count cumulative whole-day usage) and must be ignored.
     private func handleViceAppEvent(_ event: DeviceActivityEvent.Name) {
-        guard sharedStorage.isSessionActive else {
+        let outcome = SessionRules.viceMinuteOutcome(
+            sessionActive: sharedStorage.isSessionActive,
+            balanceSeconds: sharedStorage.currentBalanceSeconds()
+        )
+        guard outcome != .ignore else {
             print("ClepsyMonitor: Ignoring \(event.rawValue) — no active session")
             return
         }
@@ -81,7 +82,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
         print("ClepsyMonitor: Spent 60 seconds")
 
-        if sharedStorage.currentBalanceSeconds() <= 0 {
+        if outcome == .spendAndEndSession {
             endSession()
         }
     }

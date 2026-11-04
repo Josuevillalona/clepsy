@@ -13,10 +13,6 @@ struct ClepsyReportExtension: DeviceActivityReportExtension {
     }
 }
 
-extension DeviceActivityReport.Context {
-    static let productiveTime = Self("productiveTime")
-}
-
 /// Total time today in the apps the host's filter selects (productive apps)
 struct ProductiveTimeReport: DeviceActivityReportScene {
     let context: DeviceActivityReport.Context = .productiveTime
@@ -42,18 +38,12 @@ struct ProductiveTimeReport: DeviceActivityReportScene {
 struct ProductiveTimeView: View {
     let totalSeconds: Int
 
-    private var formatted: String {
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
-    }
-
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "hourglass")
                 .font(.caption)
                 .foregroundColor(.clepsyTeal)
-            Text("Productive apps today: \(formatted)")
+            Text("Productive apps today: \(ReportFormatting.duration(seconds: totalSeconds))")
                 .font(.clepsyCaption)
                 .foregroundColor(.clepsyTextSecondary)
             Spacer(minLength: 0)

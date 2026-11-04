@@ -14,29 +14,33 @@ class ShieldActionExtension: ShieldActionDelegate {
         case .primaryButtonPressed:
             let storage = SharedStorageService()
             let availableMinutes = storage.currentBalanceSeconds() / 60
+            let tokenKey = (try? JSONEncoder().encode(application))?.base64EncodedString()
 
-            guard availableMinutes > 0 else {
-                // iOS may have shown a cached screen from when there WAS
-                // balance ("Use my time"). If so, defer — that asks the
-                // system to re-query the configuration for a redraw with the
-                // real zero-balance screen. Recording false first means a
-                // second tap (or a fresh "Go Back" screen) always closes.
-                if let tokenData = try? JSONEncoder().encode(application),
-                   storage.shieldShowedBalance(tokenKey: tokenData.base64EncodedString()) == true {
-                    storage.setShieldShowedBalance(false, tokenKey: tokenData.base64EncodedString())
-                    Self.log.info("Primary tap: zero balance on stale screen — deferring for redraw")
-                    completionHandler(.defer)
-                } else {
-                    Self.log.info("Primary tap: zero balance on fresh screen — closing")
-                    completionHandler(.close)
+            switch ShieldRules.primaryTap(
+                availableMinutes: availableMinutes,
+                screenShowedBalance: tokenKey.flatMap { storage.shieldShowedBalance(tokenKey: $0) }
+            ) {
+            case .startSession:
+                Self.log.info("Primary tap: starting spending session (balance \(availableMinutes, privacy: .public) min)")
+                startSession(storage: storage)
+                // Shields are gone, so .none lets the user proceed into the app
+                completionHandler(.none)
+
+            case .redrawStaleScreen:
+                // iOS showed a cached screen from when there WAS balance.
+                // Defer asks the system to re-query the configuration for a
+                // redraw. Recording false first means a second tap (or a fresh
+                // "Go Back" screen) always closes.
+                if let tokenKey {
+                    storage.setShieldShowedBalance(false, tokenKey: tokenKey)
                 }
-                return
-            }
+                Self.log.info("Primary tap: zero balance on stale screen — deferring for redraw")
+                completionHandler(.defer)
 
-            Self.log.info("Primary tap: starting spending session (balance \(availableMinutes, privacy: .public) min)")
-            startSession(storage: storage)
-            // Shields are gone, so .none lets the user proceed into the app
-            completionHandler(.none)
+            case .close:
+                Self.log.info("Primary tap: zero balance on fresh screen — closing")
+                completionHandler(.close)
+            }
 
         case .secondaryButtonPressed:
             completionHandler(.close)
@@ -92,19 +96,13 @@ class ShieldActionExtension: ShieldActionDelegate {
         guard let selection = storage.loadViceSelection() else { return }
 
         let calendar = Calendar.current
-        let now = Date()
-        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
-            ?? now.addingTimeInterval(16 * 60)
-        if end.timeIntervalSince(now) < 15 * 60 {
-            end = now.addingTimeInterval(16 * 60)
-        }
-
-        storage.saveSessionMeteringEnd(end)
+        let window = SessionRules.meteringWindow(startingAt: Date(), calendar: calendar)
+        storage.saveSessionMeteringEnd(window.end)
 
         let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
         let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents(components, from: now),
-            intervalEnd: calendar.dateComponents(components, from: end),
+            intervalStart: calendar.dateComponents(components, from: window.start),
+            intervalEnd: calendar.dateComponents(components, from: window.end),
             repeats: false
         )
 

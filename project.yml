@@ -68,6 +68,7 @@ targets:
       # Include shared models and services
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
+      - path: Clepsy/Services/ScreenTimeRules.swift
     info:
       path: ClepsyMonitor/Generated-Info.plist
       properties:
@@ -100,6 +101,7 @@ targets:
       - path: ClepsyShieldConfiguration
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
+      - path: Clepsy/Services/ScreenTimeRules.swift
     info:
       path: ClepsyShieldConfiguration/Generated-Info.plist
       properties:
@@ -132,6 +134,7 @@ targets:
       - path: ClepsyShieldAction
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
+      - path: Clepsy/Services/ScreenTimeRules.swift
     info:
       path: ClepsyShieldAction/Generated-Info.plist
       properties:
@@ -164,6 +167,7 @@ targets:
     sources:
       - path: ClepsyReport
       - path: Clepsy/Theme/ClepsyTheme.swift
+      - path: Clepsy/Services/ReportContext.swift
     info:
       path: ClepsyReport/Generated-Info.plist
       properties:

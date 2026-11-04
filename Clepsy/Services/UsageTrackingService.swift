@@ -1,6 +1,5 @@
 import Foundation
 import DeviceActivity
-import SwiftUI
 import FamilyControls
 
 @MainActor
@@ -63,17 +62,13 @@ class UsageTrackingService: ObservableObject {
               !viceSelection.categoryTokens.isEmpty else { return }
 
         let calendar = Calendar.current
-        let now = Date()
-        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
-            ?? now.addingTimeInterval(16 * 60)
-        if end.timeIntervalSince(now) < 15 * 60 {
-            end = now.addingTimeInterval(16 * 60)
-        }
+        let window = SessionRules.meteringWindow(startingAt: Date(), calendar: calendar)
+        sharedStorage.saveSessionMeteringEnd(window.end)
 
         let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
         let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents(components, from: now),
-            intervalEnd: calendar.dateComponents(components, from: end),
+            intervalStart: calendar.dateComponents(components, from: window.start),
+            intervalEnd: calendar.dateComponents(components, from: window.end),
             repeats: false
         )
 
@@ -122,11 +117,4 @@ class UsageTrackingService: ObservableObject {
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
     static let viceApps       = DeviceActivityName("viceApps")
-}
-
-// MARK: - DeviceActivityReport Contexts
-
-/// Must match the context names the ClepsyReport extension declares
-extension DeviceActivityReport.Context {
-    static let productiveTime = Self("productiveTime")
 }
