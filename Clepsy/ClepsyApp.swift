@@ -47,7 +47,6 @@ struct ClepsyApp: App {
     /// Re-applies shields unless a spending session with remaining balance is
     /// running — otherwise foregrounding Clepsy would cut the session short.
     private func reapplyBlocksIfNeeded() {
-        blockingService.clearTestShieldStore()
         let shared = SharedStorageService()
         if shared.isSessionActive && shared.currentBalanceSeconds() > 0 { return }
         // Session over (or balance gone while the monitor missed it) — clean up

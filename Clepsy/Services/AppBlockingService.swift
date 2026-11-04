@@ -34,12 +34,6 @@ class AppBlockingService {
         store.shield.applicationCategories = nil
     }
 
-    /// A test build shielded from this second store at time's up. Nothing
-    /// else clears it, so a shield left there would outlive "Use My Time".
-    func clearTestShieldStore() {
-        ManagedSettingsStore(named: .init("clepsyTimesUp")).clearAllSettings()
-    }
-
     // MARK: - State
 
     var hasViceSelection: Bool {
