@@ -97,62 +97,12 @@ final class SharedStorageServiceTests: XCTestCase {
         XCTAssertTrue(retrieved.isEmpty)
     }
 
-    // MARK: - State the extensions share
-
-    func testCurrentBalanceIncludesPendingEvents() {
-        sut.saveBalanceSeconds(120)
-        sut.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .earned))
-        sut.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
-        sut.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
-
-        XCTAssertEqual(sut.currentBalanceSeconds(), 60)
-    }
-
-    func testFastBalanceMatchesCurrentBalance() {
-        // The shield configuration extension reads the fast path; it must
-        // agree with the file-backed balance the action extension reads
-        sut.saveBalanceSeconds(300)
-        sut.appendEvent(TimeEvent(seconds: 120, timestamp: Date(), type: .spent))
-
-        XCTAssertEqual(sut.fastBalanceSeconds(), sut.currentBalanceSeconds())
-    }
-
-    func testBalanceNeverGoesNegative() {
-        sut.saveBalanceSeconds(0)
-        sut.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
-
-        XCTAssertEqual(sut.currentBalanceSeconds(), 0)
-        XCTAssertEqual(sut.fastBalanceSeconds(), 0)
-    }
-
-    func testSessionActiveRoundTrip() {
-        XCTAssertFalse(sut.isSessionActive)
-        sut.saveSessionActive(true)
-        XCTAssertTrue(sut.isSessionActive)
-        sut.saveSessionActive(false)
-        XCTAssertFalse(sut.isSessionActive)
-    }
-
-    func testSessionMeteringEndRoundTrip() {
-        XCTAssertNil(sut.sessionMeteringEnd)
-        let end = Date(timeIntervalSince1970: 1_793_779_140)
-        sut.saveSessionMeteringEnd(end)
-        XCTAssertEqual(sut.sessionMeteringEnd, end)
-    }
+    // MARK: - Isolation
 
     func testTestSuiteDoesNotTouchRealAppGroup() {
         let real = SharedStorageService()
-        let realBalance = real.currentBalanceSeconds()
-        sut.saveBalanceSeconds(9_999)
-        XCTAssertEqual(real.currentBalanceSeconds(), realBalance)
-    }
-
-    func testShieldScreenRecordIsPerApp() {
-        sut.setShieldShowedBalance(true, tokenKey: "test-app-a")
-        sut.setShieldShowedBalance(false, tokenKey: "test-app-b")
-
-        XCTAssertEqual(sut.shieldShowedBalance(tokenKey: "test-app-a"), true)
-        XCTAssertEqual(sut.shieldShowedBalance(tokenKey: "test-app-b"), false)
-        XCTAssertNil(sut.shieldShowedBalance(tokenKey: "test-app-never-shown"))
+        let realGoal = real.goalMinutes(for: "2000-01-01")
+        sut.saveGoalBase(99)
+        XCTAssertEqual(real.goalMinutes(for: "2000-01-01"), realGoal)
     }
 }

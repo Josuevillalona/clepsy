@@ -15,10 +15,11 @@ class UsageTrackingService: ObservableObject {
 
     // MARK: - Daily Earning Monitoring
 
-    /// Sets up a daily midnight-to-midnight schedule that fires every 5 minutes
-    /// of productive app usage. Each firing credits 5 minutes to the balance.
-    /// Restarting an active schedule resets the day's accumulated usage,
-    /// so this is a no-op while monitoring is already running.
+    /// Sets up a daily midnight-to-midnight schedule with a threshold for each
+    /// minute of productive-app use, up to the largest goal. The monitor turns
+    /// "earn_N" into today's minutes, and the schedule's start each midnight
+    /// is when vice apps lock again. Restarting an active schedule resets the
+    /// day's accumulated usage, so this is a no-op while it's running.
     func startDailyMonitoring(productiveSelection: FamilyActivitySelection, force: Bool = false) {
         guard !productiveSelection.applicationTokens.isEmpty ||
               !productiveSelection.categoryTokens.isEmpty else { return }
@@ -34,11 +35,10 @@ class UsageTrackingService: ObservableObject {
             repeats: true
         )
 
-        // Thresholds every minute up to 3 hours of daily productive time.
-        // 1 minute is the finest granularity DeviceActivity allows.
+        // 1 minute is the finest granularity DeviceActivity allows
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for minutes in 1...180 {
-            events[DeviceActivityEvent.Name("earn_\(minutes)")] = DeviceActivityEvent(
+        for minutes in 1...GoalRules.minutesRange.upperBound {
+            events[DeviceActivityEvent.Name("\(EarnRules.eventPrefix)\(minutes)")] = DeviceActivityEvent(
                 applications: productiveSelection.applicationTokens,
                 categories: productiveSelection.categoryTokens,
                 threshold: DateComponents(minute: minutes)
@@ -54,41 +54,9 @@ class UsageTrackingService: ObservableObject {
         }
     }
 
-    // MARK: - Vice Spending Monitoring
-
-    /// Starts usage metering for a spending session. The schedule interval is
-    /// anchored at NOW: thresholds only count usage inside the interval, so a
-    /// midnight-anchored schedule would instantly re-fire for every vice
-    /// minute already used today the moment a session starts. Runs to end of
-    /// day (or now+16 min near midnight — DeviceActivity's 15-min minimum).
-    func startViceSpendingMonitoring(viceSelection: FamilyActivitySelection) {
-        do {
-            try ViceMonitoring.restart(for: viceSelection, storage: sharedStorage)
-        } catch {
-            print("❌ Failed to start vice spending monitoring: \(error)")
-        }
-    }
-
     func stopAllMonitoring() {
-        center.stopMonitoring([.productiveApps, .viceApps])
+        center.stopMonitoring([.productiveApps])
         isMonitoringActive = false
-    }
-
-    // MARK: - Event Sync
-
-    /// Drains pending time events written by the extension into the view model.
-    func syncPendingEvents(to viewModel: DashboardViewModel) {
-        let events = sharedStorage.getEvents()
-        guard !events.isEmpty else { return }
-
-        for event in events.sorted(by: { $0.timestamp < $1.timestamp }) {
-            switch event.type {
-            case .earned:  viewModel.addTime(seconds: event.seconds)
-            case .spent:   viewModel.subtractTime(seconds: event.seconds)
-            }
-        }
-
-        sharedStorage.clearEvents()
     }
 }
 
@@ -96,5 +64,4 @@ class UsageTrackingService: ObservableObject {
 
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
-    static let viceApps       = ViceMonitoring.activity
 }

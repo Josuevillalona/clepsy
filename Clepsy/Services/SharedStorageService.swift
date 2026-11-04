@@ -50,8 +50,7 @@ class SharedStorageService {
                     events.append(event)
                     let encoded = try JSONEncoder().encode(events)
                     try encoded.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: events)
-                } catch {
+                                    } catch {
                     print("Error appending event: \(error)")
                 }
             }
@@ -100,8 +99,7 @@ class SharedStorageService {
                 do {
                     let emptyArray = try JSONEncoder().encode([TimeEvent]())
                     try emptyArray.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: [])
-                } catch {
+                                    } catch {
                     print("Error clearing events: \(error)")
                 }
             }
@@ -125,8 +123,7 @@ class SharedStorageService {
                     events.removeAll { ids.contains($0.id) }
                     let encoded = try JSONEncoder().encode(events)
                     try encoded.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: events)
-                } catch {
+                                    } catch {
                     print("Error removing events: \(error)")
                 }
             }
@@ -147,72 +144,6 @@ class SharedStorageService {
     func loadViceSelection() -> FamilyActivitySelection? {
         guard let data = sharedDefaults?.data(forKey: "viceSelection") else { return nil }
         return try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
-    }
-
-    // MARK: - Balance Mirror (readable by shield extensions)
-
-    /// Mirrors the main app's saved balance. Does not include pending events.
-    func saveBalanceSeconds(_ seconds: Int) {
-        sharedDefaults?.set(seconds, forKey: "balanceSeconds")
-    }
-
-    /// Effective balance right now: last saved balance plus events the main
-    /// app hasn't consumed yet.
-    func currentBalanceSeconds() -> Int {
-        let saved = sharedDefaults?.integer(forKey: "balanceSeconds") ?? 0
-        let pending = getEvents().reduce(0) { total, event in
-            switch event.type {
-            case .earned: return total + event.seconds
-            case .spent:  return total - event.seconds
-            }
-        }
-        return max(0, saved + pending)
-    }
-
-    /// Same as `currentBalanceSeconds` but reads only UserDefaults — no file
-    /// coordination. Use from the shield configuration extension, which gets
-    /// killed by the system if it doesn't respond almost instantly.
-    func fastBalanceSeconds() -> Int {
-        let saved = sharedDefaults?.integer(forKey: "balanceSeconds") ?? 0
-        let pending = sharedDefaults?.integer(forKey: "pendingDeltaSeconds") ?? 0
-        return max(0, saved + pending)
-    }
-
-    /// Keeps a UserDefaults mirror of the net pending-event total so shield
-    /// extensions can compute the balance without touching the events file.
-    private func setPendingDelta(events: [TimeEvent]) {
-        let delta = events.reduce(0) { total, event in
-            switch event.type {
-            case .earned: return total + event.seconds
-            case .spent:  return total - event.seconds
-            }
-        }
-        sharedDefaults?.set(delta, forKey: "pendingDeltaSeconds")
-    }
-
-    // MARK: - Spending Session State
-
-    /// A session starts when the user chooses to use their earned time from a
-    /// shield: all vice apps unshield, and the balance drains only while a
-    /// vice app is actually in use (1-minute usage thresholds). The session
-    /// ends when the balance is exhausted.
-    func saveSessionActive(_ active: Bool) {
-        sharedDefaults?.set(active, forKey: "sessionActive")
-    }
-
-    var isSessionActive: Bool {
-        sharedDefaults?.bool(forKey: "sessionActive") ?? false
-    }
-
-    /// When the current session's metering interval is scheduled to end.
-    /// Restarting monitoring also fires intervalDidEnd for the old interval,
-    /// so the monitor compares against this to tell a real lapse from that.
-    func saveSessionMeteringEnd(_ date: Date) {
-        sharedDefaults?.set(date, forKey: "sessionMeteringEnd")
-    }
-
-    var sessionMeteringEnd: Date? {
-        sharedDefaults?.object(forKey: "sessionMeteringEnd") as? Date
     }
 
     // MARK: - Notifications Toggle Mirror
@@ -299,22 +230,5 @@ class SharedStorageService {
         (sharedDefaults?.object(forKey: "hapticsEnabled") as? Bool) ?? true
     }
 
-    // MARK: - Last Shield Screen Record
-
-    private let shieldStateKey = "shieldShowedBalanceByToken"
-
-    /// The configuration extension records whether the screen it returned for
-    /// an app offered an unlock. iOS caches shield appearances, so the action
-    /// extension uses this to detect taps on a stale screen. Keyed by
-    /// base64-encoded token data.
-    func setShieldShowedBalance(_ showedBalance: Bool, tokenKey: String) {
-        var states = (sharedDefaults?.dictionary(forKey: shieldStateKey) as? [String: Bool]) ?? [:]
-        states[tokenKey] = showedBalance
-        sharedDefaults?.set(states, forKey: shieldStateKey)
-    }
-
-    func shieldShowedBalance(tokenKey: String) -> Bool? {
-        ((sharedDefaults?.dictionary(forKey: shieldStateKey) as? [String: Bool]) ?? [:])[tokenKey]
-    }
 
 }

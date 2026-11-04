@@ -40,21 +40,15 @@ struct ClepsyApp: App {
     private func startDailyMonitoring() {
         let productive = persistenceService.loadProductiveSelection()
         usageTrackingService.startDailyMonitoring(productiveSelection: productive)
-        // Vice spending monitoring is NOT started here — it's anchored to the
-        // start of each spending session so earlier usage today can't count
     }
 
-    /// Re-applies shields unless a spending session with remaining balance is
-    /// running — otherwise foregrounding Clepsy would cut the session short.
+    /// Locks vice apps unless today's unlock was claimed. The monitor locks
+    /// them at midnight; this catches anything it missed.
     private func reapplyBlocksIfNeeded() {
-        let shared = SharedStorageService()
-        if shared.isSessionActive && shared.currentBalanceSeconds() > 0 { return }
-        // Session over (or balance gone while the monitor missed it) — clean up
-        shared.saveSessionActive(false)
         blockingService.applyViceAppBlocks()
     }
 
-    /// Needed for the monitor extension's "time's up" notification at re-lock
+    /// Needed for the "You hit your goal" notification from the monitor
     static func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }

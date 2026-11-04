@@ -36,43 +36,11 @@ final class UsageTrackingServiceTests: XCTestCase {
         XCTAssertFalse(sut.isMonitoringActive)
     }
 
-    func testViceMonitoringWithNoViceAppsDoesNotRecordASession() {
-        sut.startViceSpendingMonitoring(viceSelection: FamilyActivitySelection())
-        XCTAssertNil(sharedStorage.sessionMeteringEnd)
-    }
 
     // MARK: - Event sync
 
-    func testSyncAppliesEarnedAndSpentEventsToBalance() {
-        let viewModel = DashboardViewModel(persistenceService: persistence)
-        sharedStorage.appendEvent(TimeEvent(seconds: 180, timestamp: Date(), type: .earned))
-        sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: Date().addingTimeInterval(1), type: .spent))
 
-        sut.syncPendingEvents(to: viewModel)
 
-        XCTAssertEqual(viewModel.currentBalance.currentSeconds, 120)
-    }
-
-    func testSyncDrainsTheEventQueue() {
-        let viewModel = DashboardViewModel(persistenceService: persistence)
-        sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .earned))
-
-        sut.syncPendingEvents(to: viewModel)
-
-        XCTAssertTrue(sharedStorage.getEvents().isEmpty)
-    }
-
-    func testSyncAppliesEventsInTimestampOrder() {
-        // Spending before earning would be clamped at zero and lost
-        let viewModel = DashboardViewModel(persistenceService: persistence)
-        let now = Date()
-        sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: now.addingTimeInterval(5), type: .spent))
-        sharedStorage.appendEvent(TimeEvent(seconds: 120, timestamp: now, type: .earned))
-
-        sut.syncPendingEvents(to: viewModel)
-
-        XCTAssertEqual(viewModel.currentBalance.currentSeconds, 60)
-    }
 
     // MARK: - Report
 

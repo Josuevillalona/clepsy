@@ -2,6 +2,7 @@ import SwiftUI
 import FamilyControls
 
 struct SettingsView: View {
+    @ObservedObject var store: GoalStore
     @StateObject private var viewModel = SettingsViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var showVicePicker = false
@@ -352,5 +353,5 @@ struct AboutClepsyView: View {
 }
 
 #Preview {
-    SettingsView()
+    SettingsView(store: GoalStore())
 }

@@ -70,6 +70,8 @@ targets:
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
       - path: Clepsy/Services/GoalRules.swift
+      - path: Clepsy/Services/ViceShield.swift
+      - path: Clepsy/Services/GoalNotifications.swift
     info:
       path: ClepsyMonitor/Generated-Info.plist
       properties:
@@ -138,7 +140,7 @@ targets:
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
       - path: Clepsy/Services/GoalRules.swift
-      - path: Clepsy/Services/ViceMonitoring.swift
+      - path: Clepsy/Services/GoalNotifications.swift
     info:
       path: ClepsyShieldAction/Generated-Info.plist
       properties:
