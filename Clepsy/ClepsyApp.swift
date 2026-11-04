@@ -59,6 +59,19 @@ struct ContentView: View {
     @State private var showCelebration = false
 
     var body: some View {
+        #if DEBUG
+        if let demo = DemoScreen.requested {
+            demo.view
+        } else {
+            mainContent
+        }
+        #else
+        mainContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
         if hasCompletedOnboarding {
             DashboardView(showCelebration: $showCelebration)
         } else {
@@ -72,3 +85,37 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+/// Launch with `-demo claim`, `-demo goalSetup` or `-demo badges` to open a
+/// screen with sample data, for design review in the simulator (Screen Time
+/// itself doesn't run there). Uses throwaway storage, never the real data.
+enum DemoScreen: String {
+    case claim, goalSetup, badges
+
+    static var requested: DemoScreen? {
+        UserDefaults.standard.string(forKey: "demo").flatMap(DemoScreen.init)
+    }
+
+    @MainActor @ViewBuilder
+    var view: some View {
+        switch self {
+        case .claim:
+            let store = GoalStore(
+                persistence: PersistenceService(suiteName: "demo.clepsy")!,
+                shared: SharedStorageService(appGroup: "demo.clepsy"),
+                unlockApps: {}
+            )
+            ClaimView(
+                celebration: .init(id: "demo", goal: 30, streakBefore: 6, streakAfter: 7,
+                                   newBadges: [.streak7, .firstFreeze], offerGoal: 35),
+                store: store
+            )
+        case .goalSetup:
+            GoalSetupView { _, _ in }
+        case .badges:
+            BadgesView(badges: [.firstGoal: Date(), .streak3: Date(), .streak7: Date(), .firstFreeze: Date()])
+        }
+    }
+}
+#endif

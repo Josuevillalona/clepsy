@@ -22,6 +22,9 @@ struct ClepsyCharacterView: View {
                 .resizable()
                 .scaledToFit()
                 .scaleEffect(breathingScale)
+                // Cross-fade between sand levels as the fill changes
+                .id(bodyImageName)
+                .transition(.opacity)
 
             // Layer 2: The Face (Expression)
             if expression == .celebrating {

@@ -40,6 +40,9 @@ final class GoalStore: ObservableObject {
     private let now: () -> Date
     private let calendar: Calendar
     private let unlockApps: () -> Void
+    /// Set when the claim screen is closed with "Not now", so the dashboard's
+    /// periodic refresh doesn't bring it straight back
+    private var dismissedCelebrationDay: String?
 
     init(persistence: PersistenceService = PersistenceService(),
          shared: SharedStorageService = SharedStorageService(),
@@ -110,7 +113,7 @@ final class GoalStore: ObservableObject {
             status = .locked(minutesToGo: todayGoal - earn.minutes)
         }
 
-        if status == .readyToClaim, pendingCelebration?.id != today {
+        if status == .readyToClaim, pendingCelebration?.id != today, dismissedCelebrationDay != today {
             pendingCelebration = makeCelebration()
         } else if status != .readyToClaim && status != .unlocked {
             pendingCelebration = nil
@@ -189,6 +192,18 @@ final class GoalStore: ObservableObject {
 
     func finishCelebration() {
         pendingCelebration = nil
+    }
+
+    /// "Not now": close the claim screen without unlocking
+    func dismissCelebration() {
+        dismissedCelebrationDay = today
+        pendingCelebration = nil
+    }
+
+    /// Bring the claim screen back, from the dashboard's claim button
+    func presentCelebration() {
+        dismissedCelebrationDay = nil
+        refresh()
     }
 
     // MARK: - Build-up Offers

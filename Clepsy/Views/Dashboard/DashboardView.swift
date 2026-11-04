@@ -7,6 +7,7 @@ struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var showBadges = false
     @Binding var showCelebration: Bool
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
@@ -57,6 +58,12 @@ struct DashboardView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showSettings, onDismiss: refreshAll) {
             SettingsView(store: store)
+        }
+        .sheet(isPresented: $showBadges) {
+            BadgesView(badges: store.badges)
+        }
+        .fullScreenCover(item: $store.pendingCelebration) { celebration in
+            ClaimView(celebration: celebration, store: store)
         }
         .onAppear(perform: refreshAll)
         .onReceive(liveRefresh) { _ in store.refresh() }
@@ -145,8 +152,7 @@ struct DashboardView: View {
             }
 
             StatusChip(status: store.status) {
-                // The claim screen arrives with the reward layer
-                store.claim()
+                store.presentCelebration()
             }
 
             if case .buildUp(let target) = store.plan.mode {
@@ -193,6 +199,23 @@ struct DashboardView: View {
             }
 
             Spacer()
+
+            Button {
+                HapticsService.shared.light()
+                showBadges = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "medal.fill")
+                    Text("\(store.badges.count)")
+                }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.clepsyGold)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.clepsyGold.opacity(0.15))
+                .clipShape(Capsule())
+            }
+            .accessibilityLabel("Badges, \(store.badges.count) earned")
 
             if store.streak.freezes > 0 {
                 HStack(spacing: 3) {

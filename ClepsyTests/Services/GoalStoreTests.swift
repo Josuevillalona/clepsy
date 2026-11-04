@@ -208,4 +208,29 @@ final class GoalStoreTests: XCTestCase {
         store.refresh()
         XCTAssertEqual(store.displayStreak, 5)
     }
+
+    func testDismissedCelebrationStaysAwayUntilAskedFor() {
+        earned(30, reached: true)
+        let store = makeStore()
+        store.refresh()
+        store.dismissCelebration()
+        store.refresh()
+        XCTAssertNil(store.pendingCelebration)
+        XCTAssertEqual(store.status, .readyToClaim)
+
+        store.presentCelebration()
+        XCTAssertEqual(store.pendingCelebration?.id, today)
+    }
+
+    func testCelebrationStaysOpenAfterClaimUntilFinished() {
+        earned(30, reached: true)
+        let store = makeStore()
+        store.refresh()
+        store.claim()
+        store.refresh()
+        XCTAssertNotNil(store.pendingCelebration)
+        store.finishCelebration()
+        store.refresh()
+        XCTAssertNil(store.pendingCelebration)
+    }
 }
