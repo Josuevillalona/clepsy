@@ -26,9 +26,16 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         // The session metering interval runs to end of day; if a session is
         // still open when it lapses, usage would stop counting — end it.
-        if activity == .viceApps && sharedStorage.isSessionActive {
-            endSession()
+        guard activity == .viceApps && sharedStorage.isSessionActive else { return }
+
+        // Starting a session restarts monitoring, and stopping the previous
+        // interval lands here too — after the new session is already marked
+        // active. Only a real lapse (at or past the scheduled end) counts.
+        if let end = sharedStorage.sessionMeteringEnd, Date() < end.addingTimeInterval(-60) {
+            print("ClepsyMonitor: Ignoring interval end from a monitoring restart")
+            return
         }
+        endSession()
     }
 
     // MARK: - Threshold Events
@@ -87,7 +94,10 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     /// presentation, which always shows the correct zero-balance screen.
     private func endSession() {
         sharedStorage.saveSessionActive(false)
-        postTimesUpNotification()
+
+        // Posted last: a banner that appears while the app is being closed
+        // gets swept away by the transition, so you'd hear it but not see it
+        defer { postTimesUpNotification() }
 
         guard let selection = sharedStorage.loadViceSelection() else { return }
         let store = ManagedSettingsStore()

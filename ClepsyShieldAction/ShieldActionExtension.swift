@@ -99,6 +99,8 @@ class ShieldActionExtension: ShieldActionDelegate {
             end = now.addingTimeInterval(16 * 60)
         }
 
+        storage.saveSessionMeteringEnd(end)
+
         let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
         let schedule = DeviceActivitySchedule(
             intervalStart: calendar.dateComponents(components, from: now),

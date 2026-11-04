@@ -198,6 +198,17 @@ class SharedStorageService {
         sharedDefaults?.bool(forKey: "sessionActive") ?? false
     }
 
+    /// When the current session's metering interval is scheduled to end.
+    /// Restarting monitoring also fires intervalDidEnd for the old interval,
+    /// so the monitor compares against this to tell a real lapse from that.
+    func saveSessionMeteringEnd(_ date: Date) {
+        sharedDefaults?.set(date, forKey: "sessionMeteringEnd")
+    }
+
+    var sessionMeteringEnd: Date? {
+        sharedDefaults?.object(forKey: "sessionMeteringEnd") as? Date
+    }
+
     // MARK: - Notifications Toggle Mirror
 
     /// Mirror of the user's notifications setting so extensions can honor it
