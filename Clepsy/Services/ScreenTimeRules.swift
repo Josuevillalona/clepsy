@@ -101,6 +101,38 @@ enum ShieldRules {
         )
     }
 
+    // MARK: Goal model
+
+    static func content(appName: String?, earnedMinutes: Int, goalMinutes: Int, reached: Bool) -> Content {
+        if reached {
+            return Content(
+                title: "You did it 🎉",
+                subtitle: "Today's goal is done. Open Clepsy to claim your unlock.",
+                primaryButton: "Claim in Clepsy",
+                secondaryButton: "Go Back"
+            )
+        }
+        let title = appName.map { "\($0) is locked" } ?? "This app is locked"
+        return Content(
+            title: title,
+            subtitle: "\(min(earnedMinutes, goalMinutes)) of \(goalMinutes) min today. Your productive apps unlock it.",
+            primaryButton: "Go Back",
+            secondaryButton: nil
+        )
+    }
+
+    enum GoalTap: Equatable {
+        case close
+        /// Shields can't open Clepsy; a notification is the one-tap path
+        case claimViaNotification
+    }
+
+    static func primaryTap(reached: Bool) -> GoalTap {
+        reached ? .claimViaNotification : .close
+    }
+
+    // MARK: Balance model (removed with the engine switch)
+
     enum PrimaryTap: Equatable {
         case startSession
         /// Zero balance, but the screen tapped was a cached one that still

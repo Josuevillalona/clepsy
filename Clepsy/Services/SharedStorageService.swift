@@ -227,6 +227,78 @@ class SharedStorageService {
         (sharedDefaults?.object(forKey: "notificationsEnabled") as? Bool) ?? true
     }
 
+    // MARK: - Daily Goal State (fast path: UserDefaults only)
+
+    /// Today's goal, written by the app at rollover and whenever it changes
+    func saveGoalToday(minutes: Int, day: String) {
+        sharedDefaults?.set(minutes, forKey: "goalMinutesToday")
+        sharedDefaults?.set(day, forKey: "goalDay")
+    }
+
+    /// The plan's current goal, for days the app hasn't rolled over yet
+    func saveGoalBase(_ minutes: Int) {
+        sharedDefaults?.set(minutes, forKey: "goalMinutesBase")
+    }
+
+    func goalMinutes(for day: String) -> Int {
+        if sharedDefaults?.string(forKey: "goalDay") == day,
+           let today = sharedDefaults?.object(forKey: "goalMinutesToday") as? Int {
+            return today
+        }
+        return (sharedDefaults?.object(forKey: "goalMinutesBase") as? Int) ?? GoalPlan.default.currentGoal
+    }
+
+    /// Written by the monitor as earn thresholds fire
+    var earnState: EarnState? {
+        guard let day = sharedDefaults?.string(forKey: "earnDay") else { return nil }
+        return EarnState(
+            day: day,
+            minutes: sharedDefaults?.integer(forKey: "earnMinutes") ?? 0,
+            reached: sharedDefaults?.bool(forKey: "earnReached") ?? false
+        )
+    }
+
+    func saveEarnState(_ state: EarnState) {
+        sharedDefaults?.set(state.day, forKey: "earnDay")
+        sharedDefaults?.set(state.minutes, forKey: "earnMinutes")
+        sharedDefaults?.set(state.reached, forKey: "earnReached")
+    }
+
+    private static let reachedDaysLimit = 60
+
+    /// Days the goal was reached, so the app can roll streaks forward over
+    /// days it never ran on. Keeps the most recent 60.
+    var reachedDays: Set<String> {
+        Set(sharedDefaults?.stringArray(forKey: "reachedDays") ?? [])
+    }
+
+    func addReachedDay(_ day: String) {
+        var days = reachedDays
+        days.insert(day)
+        // Day keys sort chronologically as strings
+        let kept = days.sorted().suffix(Self.reachedDaysLimit)
+        sharedDefaults?.set(Array(kept), forKey: "reachedDays")
+    }
+
+    /// The day the user claimed their unlock; shields stay off until it changes
+    var unlockedDay: String? {
+        sharedDefaults?.string(forKey: "unlockedDay")
+    }
+
+    func saveUnlockedDay(_ day: String?) {
+        sharedDefaults?.set(day, forKey: "unlockedDay")
+    }
+
+    // MARK: - Haptics Toggle Mirror
+
+    func saveHapticsEnabled(_ enabled: Bool) {
+        sharedDefaults?.set(enabled, forKey: "hapticsEnabled")
+    }
+
+    var hapticsEnabled: Bool {
+        (sharedDefaults?.object(forKey: "hapticsEnabled") as? Bool) ?? true
+    }
+
     // MARK: - Last Shield Screen Record
 
     private let shieldStateKey = "shieldShowedBalanceByToken"

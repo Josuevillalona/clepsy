@@ -69,6 +69,7 @@ targets:
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
+      - path: Clepsy/Services/GoalRules.swift
     info:
       path: ClepsyMonitor/Generated-Info.plist
       properties:
@@ -102,6 +103,7 @@ targets:
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
+      - path: Clepsy/Services/GoalRules.swift
     info:
       path: ClepsyShieldConfiguration/Generated-Info.plist
       properties:
@@ -135,6 +137,7 @@ targets:
       - path: Clepsy/Models/TimeEvent.swift
       - path: Clepsy/Services/SharedStorageService.swift
       - path: Clepsy/Services/ScreenTimeRules.swift
+      - path: Clepsy/Services/GoalRules.swift
       - path: Clepsy/Services/ViceMonitoring.swift
     info:
       path: ClepsyShieldAction/Generated-Info.plist
