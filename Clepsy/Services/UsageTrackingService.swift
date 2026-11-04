@@ -1,5 +1,6 @@
 import Foundation
 import DeviceActivity
+import SwiftUI
 import FamilyControls
 
 @MainActor
@@ -121,4 +122,11 @@ class UsageTrackingService: ObservableObject {
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
     static let viceApps       = DeviceActivityName("viceApps")
+}
+
+// MARK: - DeviceActivityReport Contexts
+
+/// Must match the context names the ClepsyReport extension declares
+extension DeviceActivityReport.Context {
+    static let productiveTime = Self("productiveTime")
 }

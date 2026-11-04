@@ -9,6 +9,7 @@ settings:
   SWIFT_VERSION: "5.9"
   MARKETING_VERSION: "1.0.0"
   CURRENT_PROJECT_VERSION: "1"
+  DEVELOPMENT_TEAM: 98PT3PWGFU
 
 targets:
   Clepsy:
@@ -46,6 +47,8 @@ targets:
       - target: ClepsyShieldConfiguration
         embed: true
       - target: ClepsyShieldAction
+        embed: true
+      - target: ClepsyReport
         embed: true
     scheme:
       testTargets:
@@ -153,6 +156,34 @@ targets:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:
           - group.com.clepsy.shared
+
+  ClepsyReport:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: ClepsyReport
+      - path: Clepsy/Theme/ClepsyTheme.swift
+    info:
+      path: ClepsyReport/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: ClepsyReport
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivityui.report-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clepsy.app.report
+        CODE_SIGN_ENTITLEMENTS: ClepsyReport/ClepsyReport.entitlements
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: DeviceActivity.framework
+      - sdk: FamilyControls.framework
+    entitlements:
+      path: ClepsyReport/ClepsyReport.entitlements
+      properties:
+        com.apple.developer.family-controls: true
 
   ClepsyTests:
     type: bundle.unit-test

@@ -1,5 +1,6 @@
 import SwiftUI
 import FamilyControls
+import DeviceActivity
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
@@ -9,6 +10,7 @@ struct DashboardView: View {
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
     @State private var glowPulse = false
+    @State private var reportRefreshDate = Date()
 
     var body: some View {
         ZStack {
@@ -62,6 +64,9 @@ struct DashboardView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 viewModel.syncPendingEvents()
+                // The report view only renders once; a new filter on every
+                // foreground makes iOS hand the extension fresh usage data
+                reportRefreshDate = Date()
             }
         }
         .overlay {
@@ -244,10 +249,28 @@ struct DashboardView: View {
             Text("\(viewModel.todayEarnedMinutes) of \(viewModel.dailyGoalMinutes) minutes earned today")
                 .font(.clepsyCaption)
                 .foregroundColor(.clepsyTextSecondary)
+
+            // Prototype: live Screen Time total for productive apps, drawn by
+            // the ClepsyReport extension (display-only — the app can't read it)
+            DeviceActivityReport(.productiveTime, filter: productiveTodayFilter)
+                .frame(height: 20)
+                .id(reportRefreshDate)
         }
         .padding()
         .background(Color.clepsySurface)
         .cornerRadius(20)
+    }
+
+    private var productiveTodayFilter: DeviceActivityFilter {
+        let start = Calendar.current.startOfDay(for: reportRefreshDate)
+        let today = DateInterval(start: start, end: max(reportRefreshDate, start))
+        return DeviceActivityFilter(
+            segment: .daily(during: today),
+            users: .all,
+            devices: .init([.iPhone]),
+            applications: viewModel.productiveSelection.applicationTokens,
+            categories: viewModel.productiveSelection.categoryTokens
+        )
     }
 
     // MARK: - Vice Apps
