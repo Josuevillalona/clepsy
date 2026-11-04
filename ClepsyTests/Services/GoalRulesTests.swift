@@ -103,6 +103,13 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertEqual(result.state, EarnState(day: "2026-11-04", minutes: 1, reached: false))
     }
 
+    func testOffsetCarriesMinutesAcrossAMonitoringRestart() {
+        // 20 minutes before a restart; the restarted count begins at 1 again
+        let stored = EarnState(day: "2026-11-04", minutes: 20, reached: false)
+        let result = EarnRules.apply(eventMinute: 1, today: "2026-11-04", stored: stored, goal: 30, offset: 20)
+        XCTAssertEqual(result.state.minutes, 21)
+    }
+
     func testParseEventName() {
         XCTAssertEqual(EarnRules.minute(fromEventName: "earn_12"), 12)
         XCTAssertNil(EarnRules.minute(fromEventName: "spend_3"))
@@ -161,6 +168,12 @@ final class SharedGoalStateTests: XCTestCase {
         let state = EarnState(day: "2026-11-04", minutes: 12, reached: false)
         sut.saveEarnState(state)
         XCTAssertEqual(sut.earnState, state)
+    }
+
+    func testEarnOffsetIsPerDay() {
+        sut.saveEarnOffset(20, day: "2026-11-04")
+        XCTAssertEqual(sut.earnOffset(for: "2026-11-04"), 20)
+        XCTAssertEqual(sut.earnOffset(for: "2026-11-05"), 0)
     }
 
     func testReachedDaysKeepsLatestSixty() {

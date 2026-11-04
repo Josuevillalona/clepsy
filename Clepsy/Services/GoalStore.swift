@@ -232,13 +232,15 @@ final class GoalStore: ObservableObject {
     /// tomorrow, so a claimed (or claimable) day is never moved
     func setPlan(mode: GoalMode, goal: Int) {
         let goal = GoalRules.clamped(goal)
+        let changed = mode != plan.mode || goal != (plan.pendingGoal ?? plan.currentGoal)
         plan.mode = mode
         if reachedToday {
-            plan.pendingGoal = goal
+            plan.pendingGoal = goal == plan.currentGoal ? nil : goal
         } else {
             plan.currentGoal = goal
             plan.pendingGoal = nil
-            plan.consecutiveReached = 0
+            // Re-saving the same plan keeps progress toward the next offer
+            if changed { plan.consecutiveReached = 0 }
         }
         persistence.saveGoalPlan(plan)
         refresh()

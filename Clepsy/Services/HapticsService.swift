@@ -18,7 +18,8 @@ final class HapticsService {
     private var engine: CHHapticEngine?
     private var rampPlayer: CHHapticAdvancedPatternPlayer?
 
-    private var enabled: Bool { SharedStorageService().hapticsEnabled }
+    private let shared = SharedStorageService()
+    private var enabled: Bool { shared.hapticsEnabled }
     private var supportsCustom: Bool { CHHapticEngine.capabilitiesForHardware().supportsHaptics }
 
     func selection() {

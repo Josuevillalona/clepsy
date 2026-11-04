@@ -64,8 +64,9 @@ enum DayProcessor {
                     streak.freezes -= 1
                     streak.frozenDays.append(day)
                 } else {
+                    // Only a streak that existed can end (and be come back from)
+                    if streak.count > 0 { streak.lastResetDay = day }
                     streak.count = 0
-                    streak.lastResetDay = day
                 }
                 plan.consecutiveReached = 0
             }

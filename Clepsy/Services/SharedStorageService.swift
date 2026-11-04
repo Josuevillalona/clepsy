@@ -195,6 +195,17 @@ class SharedStorageService {
         sharedDefaults?.set(state.reached, forKey: "earnReached")
     }
 
+    /// Today's earned minutes at the last monitoring restart (see EarnRules)
+    func saveEarnOffset(_ minutes: Int, day: String) {
+        sharedDefaults?.set(minutes, forKey: "earnOffset")
+        sharedDefaults?.set(day, forKey: "earnOffsetDay")
+    }
+
+    func earnOffset(for day: String) -> Int {
+        guard sharedDefaults?.string(forKey: "earnOffsetDay") == day else { return 0 }
+        return sharedDefaults?.integer(forKey: "earnOffset") ?? 0
+    }
+
     private static let reachedDaysLimit = 60
 
     /// Days the goal was reached, so the app can roll streaks forward over

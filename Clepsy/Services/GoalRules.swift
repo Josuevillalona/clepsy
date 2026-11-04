@@ -127,11 +127,13 @@ enum EarnRules {
 
     /// Thresholds can be redelivered or arrive out of order, so the count
     /// only ever moves up and the goal is reported reached exactly once.
-    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int)
+    /// `offset` is today's total when monitoring was last restarted, since a
+    /// restart starts the thresholds counting from zero again.
+    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int, offset: Int = 0)
         -> (state: EarnState, justReached: Bool) {
         var state = (stored?.day == today ? stored : nil)
             ?? EarnState(day: today, minutes: 0, reached: false)
-        state.minutes = max(state.minutes, eventMinute)
+        state.minutes = max(state.minutes, eventMinute + offset)
 
         let justReached = !state.reached && state.minutes >= goal
         if justReached { state.reached = true }

@@ -233,4 +233,14 @@ final class GoalStoreTests: XCTestCase {
         store.refresh()
         XCTAssertNil(store.pendingCelebration)
     }
+
+    func testSavingTheSamePlanKeepsOfferProgress() {
+        let plan = GoalPlan(mode: .buildUp(target: 45), currentGoal: 20, consecutiveReached: 2, pendingGoal: nil)
+        setPlan(plan)
+        earned(5)
+        let store = makeStore()
+        store.refresh()
+        store.setPlan(mode: .buildUp(target: 45), goal: 20)
+        XCTAssertEqual(store.plan.consecutiveReached, 2)
+    }
 }

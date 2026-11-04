@@ -93,6 +93,12 @@ final class DayProcessorTests: XCTestCase {
         XCTAssertEqual(result.newBadges, [.comeback])
     }
 
+    func testNoComebackWithoutABrokenStreak() {
+        let d = days(2)
+        let result = run(d, reached: [d[1]], streak: StreakState(count: 0, freezes: 0))
+        XCTAssertFalse(result.newBadges.contains(.comeback))
+    }
+
     func testIntenseBadgeAtEighty() {
         let plan = GoalPlan(mode: .fixed, currentGoal: 80, consecutiveReached: 0, pendingGoal: nil)
         XCTAssertTrue(run(days(1), reached: Set(days(1)), plan: plan, earned: [.firstGoal]).newBadges.contains(.intense))

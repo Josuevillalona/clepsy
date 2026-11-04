@@ -259,7 +259,12 @@ struct GoalMinutesPicker: View {
             Slider(
                 value: Binding(
                     get: { Double(minutes) },
-                    set: { minutes = GoalRules.clamped(Int($0.rounded())) }
+                    set: {
+                        let snapped = GoalRules.clamped(Int($0.rounded()))
+                        // Tick only for the user's own drag, not for clamps
+                        if snapped != minutes { HapticsService.shared.selection() }
+                        minutes = snapped
+                    }
                 ),
                 in: Double(range.lowerBound)...Double(max(range.upperBound, range.lowerBound + 1)),
                 step: Double(GoalRules.step)
@@ -275,7 +280,6 @@ struct GoalMinutesPicker: View {
                     .animation(.easeInOut(duration: 0.2), value: difficulty)
             }
         }
-        .onChange(of: minutes) { _ in HapticsService.shared.selection() }
         .onChange(of: range) { newRange in
             if !newRange.contains(minutes) { minutes = min(max(minutes, newRange.lowerBound), newRange.upperBound) }
         }

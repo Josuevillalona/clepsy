@@ -45,6 +45,11 @@ class UsageTrackingService: ObservableObject {
             )
         }
 
+        // A restart counts from zero again; carry today's minutes forward
+        let today = DayKey.string(for: Date())
+        let earnedToday = sharedStorage.earnState.flatMap { $0.day == today ? $0.minutes : nil } ?? 0
+        sharedStorage.saveEarnOffset(earnedToday, day: today)
+
         do {
             center.stopMonitoring([.productiveApps])
             try center.startMonitoring(.productiveApps, during: schedule, events: events)
