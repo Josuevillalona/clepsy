@@ -20,34 +20,6 @@ final class PersistenceServiceTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - TimeBalance Tests
-
-    func testSaveAndLoadTimeBalance() {
-        var balance = TimeBalance(currentSeconds: 1800)
-        balance.add(seconds: 300)
-
-        sut.saveTimeBalance(balance)
-        let loaded = sut.loadTimeBalance()
-
-        XCTAssertEqual(loaded.currentSeconds, 2100)
-    }
-
-    func testLoadTimeBalanceWhenNoneExists() {
-        let loaded = sut.loadTimeBalance()
-        XCTAssertEqual(loaded.currentSeconds, 0)
-    }
-
-    func testTimeBalancePersistsAcrossInstances() {
-        let balance = TimeBalance(currentSeconds: 500)
-        sut.saveTimeBalance(balance)
-
-        // Create new service instance
-        let newService = PersistenceService(userDefaults: testDefaults)
-        let loaded = newService.loadTimeBalance()
-
-        XCTAssertEqual(loaded.currentSeconds, 500)
-    }
-
     // MARK: - UserSettings Tests
 
     func testSaveAndLoadUserSettings() {
@@ -83,57 +55,33 @@ final class PersistenceServiceTests: XCTestCase {
         XCTAssertTrue(loaded.hasCompletedOnboarding)
     }
 
-    // MARK: - Daily Reset Tests
+    // MARK: - Goal Plan, Streak, Badges
 
-    func testPerformDailyReset() {
-        var balance = TimeBalance(currentSeconds: 1000)
-        balance.add(seconds: 500)
-        sut.saveTimeBalance(balance)
-
-        sut.performDailyReset()
-
-        let loaded = sut.loadTimeBalance()
-        XCTAssertEqual(loaded.currentSeconds, 0)
+    func testGoalPlanRoundTrip() {
+        XCTAssertNil(sut.loadGoalPlan())
+        let plan = GoalPlan(mode: .buildUp(target: 45), currentGoal: 20, consecutiveReached: 2, pendingGoal: 25)
+        sut.saveGoalPlan(plan)
+        XCTAssertEqual(sut.loadGoalPlan(), plan)
     }
 
-    func testLastResetDate() {
-        let now = Date()
-        sut.saveLastResetDate(now)
-
-        let loaded = sut.loadLastResetDate()
-        XCTAssertNotNil(loaded)
-
-        // Compare timestamps (allowing 1 second tolerance)
-        if let loaded = loaded {
-            XCTAssertEqual(loaded.timeIntervalSince1970, now.timeIntervalSince1970, accuracy: 1.0)
-        }
+    func testStreakAndBadgesRoundTrip() {
+        let streak = StreakState(count: 6, freezes: 1, lastProcessedDay: "2026-11-03")
+        sut.saveStreak(streak)
+        let date = Date(timeIntervalSince1970: 1_793_779_140)
+        sut.saveBadges([.firstGoal: date])
+        sut.saveUnseenBadges([.streak3])
+        XCTAssertEqual(sut.loadStreak(), streak)
+        XCTAssertEqual(sut.loadBadges(), [.firstGoal: date])
+        XCTAssertEqual(sut.loadUnseenBadges(), [.streak3])
     }
 
-    func testLastResetDateWhenNoneExists() {
-        let loaded = sut.loadLastResetDate()
-        XCTAssertNil(loaded)
-    }
-
-    // MARK: - Clear All Data
-
-    func testClearAllData() {
-        // Set up some data
-        var settings = UserSettings()
-        settings.hasCompletedOnboarding = true
-        sut.saveUserSettings(settings)
-
-        let balance = TimeBalance(currentSeconds: 1000)
-        sut.saveTimeBalance(balance)
-
-        // Clear everything
+    func testClearAllRemovesGoalState() {
+        sut.saveGoalPlan(.default)
+        sut.saveStreak(StreakState(count: 3))
+        sut.saveBadges([.firstGoal: Date()])
         sut.clearAll()
-
-        // Verify everything is reset
-        let loadedSettings = sut.loadUserSettings()
-        let loadedBalance = sut.loadTimeBalance()
-
-        XCTAssertFalse(loadedSettings.hasCompletedOnboarding)
-        XCTAssertEqual(loadedBalance.currentSeconds, 0)
-        XCTAssertNil(sut.loadLastResetDate())
+        XCTAssertNil(sut.loadGoalPlan())
+        XCTAssertEqual(sut.loadStreak(), StreakState())
+        XCTAssertTrue(sut.loadBadges().isEmpty)
     }
 }

@@ -88,29 +88,48 @@ struct ViceAppSelectionView: View {
                         .padding(.horizontal, ClepsySpacing.md)
                     }
 
-                    Button {
-                        showingPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "apps.iphone")
-                            Text(hasSelection ? "Change Selection" : "Choose Apps")
+                    // One primary action at a time: picking apps until they're
+                    // picked, then Continue takes over and this steps back
+                    if hasSelection {
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "apps.iphone")
+                                Text("Change Selection")
+                            }
                         }
+                        .buttonStyle(.clepsySecondary)
+                        .padding(.horizontal, ClepsySpacing.md)
+                    } else {
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "apps.iphone")
+                                Text("Choose Apps")
+                            }
+                        }
+                        .buttonStyle(.clepsyPrimary)
+                        .padding(.horizontal, ClepsySpacing.md)
                     }
-                    .buttonStyle(.clepsyPrimary)
-                    .padding(.horizontal, ClepsySpacing.md)
                 }
 
                 Spacer()
 
-                Button(action: onContinue) {
-                    Text("Continue")
+                // Hidden until there's something to continue with
+                if canContinue {
+                    Button(action: onContinue) {
+                        Text("Continue")
+                    }
+                    .buttonStyle(.clepsyPrimary)
+                    .padding(.horizontal, ClepsySpacing.md)
+                    .padding(.vertical, ClepsySpacing.sm)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .buttonStyle(.clepsyPrimary)
-                .disabled(!canContinue)
-                .padding(.horizontal, ClepsySpacing.md)
-                .padding(.vertical, ClepsySpacing.sm)
             }
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: canContinue)
         .familyActivityPicker(isPresented: $showingPicker, selection: $selection)
     }
 }
@@ -201,29 +220,48 @@ struct ProductiveAppSelectionView: View {
                         .padding(.horizontal, ClepsySpacing.md)
                     }
 
-                    Button {
-                        showingPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "apps.iphone")
-                            Text(hasSelection ? "Change Selection" : "Choose Apps")
+                    // One primary action at a time: picking apps until they're
+                    // picked, then Continue takes over and this steps back
+                    if hasSelection {
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "apps.iphone")
+                                Text("Change Selection")
+                            }
                         }
+                        .buttonStyle(.clepsySecondary)
+                        .padding(.horizontal, ClepsySpacing.md)
+                    } else {
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "apps.iphone")
+                                Text("Choose Apps")
+                            }
+                        }
+                        .buttonStyle(.clepsyPrimary)
+                        .padding(.horizontal, ClepsySpacing.md)
                     }
-                    .buttonStyle(.clepsyPrimary)
-                    .padding(.horizontal, ClepsySpacing.md)
                 }
 
                 Spacer()
 
-                Button(action: onContinue) {
-                    Text("Continue")
+                // Hidden until there's something to continue with
+                if canContinue {
+                    Button(action: onContinue) {
+                        Text("Continue")
+                    }
+                    .buttonStyle(.clepsyPrimary)
+                    .padding(.horizontal, ClepsySpacing.md)
+                    .padding(.vertical, ClepsySpacing.sm)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .buttonStyle(.clepsyPrimary)
-                .disabled(!canContinue)
-                .padding(.horizontal, ClepsySpacing.md)
-                .padding(.vertical, ClepsySpacing.sm)
             }
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: canContinue)
         .familyActivityPicker(isPresented: $showingPicker, selection: $selection)
     }
 }

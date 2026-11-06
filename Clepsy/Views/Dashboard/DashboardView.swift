@@ -3,14 +3,20 @@ import FamilyControls
 import DeviceActivity
 
 struct DashboardView: View {
+    @StateObject private var store = GoalStore()
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var showBadges = false
     @Binding var showCelebration: Bool
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
     @State private var glowPulse = false
     @State private var reportRefreshDate = Date()
+
+    /// The monitor updates today's minutes in the background; while the
+    /// dashboard is open, pick them up every so often
+    private let liveRefresh = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -39,11 +45,8 @@ struct DashboardView: View {
 
                 ScrollView {
                     VStack(spacing: ClepsySpacing.md) {
-                        balanceHeroCard
-                        if viewModel.showStreakBanner {
-                            streakBanner
-                        }
-                        goalProgressCard
+                        goalHeroCard
+                        streakCard
                         viceAppsSection
                         productiveAppsSection
                     }
@@ -53,25 +56,23 @@ struct DashboardView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
+        .sheet(isPresented: $showSettings, onDismiss: refreshAll) {
+            SettingsView(store: store)
         }
-        .onAppear {
-            viewModel.checkAndPerformDailyReset()
-            viewModel.refreshGoal()
-            viewModel.syncPendingEvents()
+        .sheet(isPresented: $showBadges) {
+            BadgesView(badges: store.badges)
         }
+        .fullScreenCover(item: $store.pendingCelebration) { celebration in
+            ClaimView(celebration: celebration, store: store)
+        }
+        .onAppear(perform: refreshAll)
+        .onReceive(liveRefresh) { _ in store.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
-            // Open across midnight: switch the report to the new day
-            reportRefreshDate = Date()
+            // Open across midnight: a new day's goal, and the report's new day
+            refreshAll()
         }
         .onChange(of: scenePhase) { phase in
-            if phase == .active {
-                viewModel.syncPendingEvents()
-                // The report view only renders once; recreating it on every
-                // foreground makes iOS hand the extension fresh usage data
-                reportRefreshDate = Date()
-            }
+            if phase == .active { refreshAll() }
         }
         .overlay {
             if showCelebration {
@@ -80,18 +81,36 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Balance Hero Card
+    private func refreshAll() {
+        viewModel.refreshSelections()
+        store.refresh()
+        // The report view only renders once; recreating it makes iOS hand
+        // the extension fresh usage data
+        reportRefreshDate = Date()
+    }
 
-    private var balanceHeroCard: some View {
-        VStack(spacing: 16) {
-            // Character with pulsing glow
+    // MARK: - Goal Hero Card
+
+    private var fillPercentage: Double {
+        guard !store.reachedToday else { return 1 }
+        guard store.todayGoal > 0 else { return 0 }
+        return min(Double(store.earnedMinutes) / Double(store.todayGoal), 1)
+    }
+
+    private var expression: ClepsyExpression {
+        if store.reachedToday { return .celebrating }
+        return fillPercentage >= 0.5 ? .encouraging : .patient
+    }
+
+    private var goalHeroCard: some View {
+        VStack(spacing: 14) {
+            // Character with pulsing glow; the sand is today's goal progress
             ZStack {
-                // Pulsing radial glow
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color.clepsyGold.opacity(glowPulse ? 0.2 : 0.1),
+                                Color.clepsyGold.opacity(glowPulse ? 0.22 : 0.1),
                                 Color.clepsyGold.opacity(glowPulse ? 0.08 : 0.03),
                                 Color.clear
                             ],
@@ -103,64 +122,42 @@ struct DashboardView: View {
                     .frame(width: 180, height: 180)
                     .scaleEffect(glowPulse ? 1.08 : 1.0)
 
-                ClepsyCharacterView(
-                    balancePercentage: min(viewModel.balancePercentage, 1.0),
-                    expression: expressionForBalance
-                )
-                .scaleEffect(0.525)
-                .frame(height: 150)
+                ClepsyCharacterView(fillPercentage: fillPercentage, expression: expression)
+                    .scaleEffect(0.525)
+                    .frame(height: 150)
             }
             .onAppear {
-                withAnimation(
-                    .easeInOut(duration: 3.0)
-                    .repeatForever(autoreverses: true)
-                ) {
+                withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
                     glowPulse = true
                 }
             }
 
-            // Balance
-            VStack(spacing: 6) {
-                Text("YOUR BALANCE")
-                    .font(.clepsyCaption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.clepsyTextSecondary)
-                    .tracking(1.5)
+            VStack(spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(min(store.earnedMinutes, store.todayGoal))")
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .foregroundColor(.clepsyTextPrimary)
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: store.earnedMinutes)
+                    Text("of \(store.todayGoal) min")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundColor(.clepsyTextSecondary)
+                }
 
-                Text(viewModel.formattedBalance)
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundColor(.clepsyTextPrimary)
+                // Accurate to the second, drawn by the ClepsyReport extension
+                // (display-only: the app can't read it)
+                DeviceActivityReport(.productiveTime, filter: productiveTodayFilter)
+                    .frame(height: 20)
+                    .id(reportRefreshDate)
             }
 
-            // Earned / Spent inline
-            HStack(spacing: 0) {
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedEarned)
-                        .font(.clepsyHeadline)
-                        .foregroundColor(.clepsyTeal)
-                    Text("EARNED")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.clepsyTextSecondary)
-                        .tracking(1)
-                }
-                .frame(maxWidth: .infinity)
-
-                Rectangle()
-                    .fill(Color.clepsyTextSecondary.opacity(0.3))
-                    .frame(width: 1, height: 30)
-
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedSpent)
-                        .font(.clepsyHeadline)
-                        .foregroundColor(.clepsyOrange)
-                    Text("SPENT")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.clepsyTextSecondary)
-                        .tracking(1)
-                }
-                .frame(maxWidth: .infinity)
+            StatusChip(status: store.status) {
+                store.presentCelebration()
             }
-            .padding(.bottom, 4)
+
+            if case .buildUp(let target) = store.plan.mode {
+                buildUpRow(target: target)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, ClepsySpacing.md)
@@ -169,100 +166,85 @@ struct DashboardView: View {
         .cornerRadius(24)
     }
 
-    // MARK: - Streak Banner
+    private func buildUpRow(target: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.caption)
+                .foregroundColor(.clepsyTeal)
+            Text("Building up · today \(store.todayGoal) · target \(target) min")
+                .font(.clepsyCaption)
+                .foregroundColor(.clepsyTextSecondary)
+        }
+    }
 
-    private var streakBanner: some View {
-        HStack {
-            Text("🔥")
-                .font(.title2)
+    // MARK: - Streak
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(viewModel.currentStreak) Day Streak!")
-                    .font(.clepsyHeadline)
-                    .foregroundColor(.clepsyTextPrimary)
-                Text(viewModel.streakMessage)
-                    .font(.clepsyCaption)
-                    .foregroundColor(.clepsyTextPrimary.opacity(0.85))
+    private var streakCard: some View {
+        HStack(spacing: ClepsySpacing.sm) {
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(colors: [.clepsyGold, .clepsyOrange], startPoint: .top, endPoint: .bottom)
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(store.displayStreak)-day streak")
+                        .font(.clepsyHeadline)
+                        .foregroundColor(.clepsyTextPrimary)
+                        .contentTransition(.numericText())
+                    Text(streakMessage)
+                        .font(.clepsyCaption)
+                        .foregroundColor(.clepsyTextSecondary)
+                }
             }
 
             Spacer()
 
             Button {
-                withAnimation { viewModel.dismissStreak() }
+                HapticsService.shared.light()
+                showBadges = true
             } label: {
-                Image(systemName: "xmark")
-                    .font(.caption)
-                    .foregroundColor(.clepsyTextPrimary.opacity(0.7))
-                    .frame(width: 32, height: 32)
-            }
-        }
-        .padding()
-        .background(
-            LinearGradient(
-                colors: [.clepsyGold, .clepsyOrange],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
-        .cornerRadius(16)
-        .transition(.move(edge: .top).combined(with: .opacity))
-    }
-
-    // MARK: - Goal Progress
-
-    private var goalProgressCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "target")
-                        .font(.caption)
-                        .foregroundColor(.clepsyTeal)
-                    Text("Daily Goal")
-                        .font(.clepsyHeadline)
-                        .foregroundColor(.clepsyTextPrimary)
+                HStack(spacing: 4) {
+                    Image(systemName: "medal.fill")
+                    Text("\(store.badges.count)")
                 }
-                Spacer()
-                Text("\(Int(viewModel.goalProgressPercentage * 100))%")
-                    .font(.clepsyHeadline)
-                    .foregroundColor(.clepsyGold)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.clepsyGold)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.clepsyGold.opacity(0.15))
+                .clipShape(Capsule())
             }
+            .accessibilityLabel("Badges, \(store.badges.count) earned")
 
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.clepsyMidnight)
-                        .frame(height: 10)
-
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(
-                            LinearGradient(
-                                colors: [.clepsyTeal, .clepsyGold],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(
-                            width: max(0, geometry.size.width * viewModel.goalProgressPercentage),
-                            height: 10
-                        )
-                        .animation(.easeInOut(duration: 0.3), value: viewModel.goalProgressPercentage)
+            if store.streak.freezes > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "snowflake")
+                    Text("\(store.streak.freezes)")
                 }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.clepsyTeal)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.clepsyTeal.opacity(0.15))
+                .clipShape(Capsule())
+                .accessibilityLabel("\(store.streak.freezes) streak freeze\(store.streak.freezes == 1 ? "" : "s")")
             }
-            .frame(height: 10)
-
-            Text("\(viewModel.todayEarnedMinutes) of \(viewModel.dailyGoalMinutes) minutes earned today")
-                .font(.clepsyCaption)
-                .foregroundColor(.clepsyTextSecondary)
-
-            // Prototype: live Screen Time total for productive apps, drawn by
-            // the ClepsyReport extension (display-only — the app can't read it)
-            DeviceActivityReport(.productiveTime, filter: productiveTodayFilter)
-                .frame(height: 20)
-                .id(reportRefreshDate)
         }
         .padding()
         .background(Color.clepsySurface)
         .cornerRadius(20)
+    }
+
+    private var streakMessage: String {
+        switch store.displayStreak {
+        case 0: return "Hit today's goal to start one"
+        case 1...6: return "Keep it going!"
+        case 7...13: return "You're building a real habit here"
+        case 14...29: return "Two weeks strong!"
+        case 30...59: return "A whole month! Incredible"
+        default: return "You're unstoppable!"
+        }
     }
 
     private var productiveTodayFilter: DeviceActivityFilter {
@@ -404,18 +386,6 @@ struct DashboardView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 showCelebration = false
             }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var expressionForBalance: ClepsyExpression {
-        if viewModel.goalProgressPercentage >= 1.0 {
-            return .celebrating
-        } else if viewModel.goalProgressPercentage > 0.3 {
-            return .encouraging
-        } else {
-            return .patient
         }
     }
 }

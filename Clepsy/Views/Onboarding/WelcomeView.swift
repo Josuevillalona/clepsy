@@ -29,23 +29,23 @@ struct WelcomeView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     FeatureRow(
                         icon: "lock.fill",
-                        title: "Vice apps are blocked",
-                        description: "TikTok, Instagram, etc. start locked"
+                        title: "Socials start locked",
+                        description: "TikTok, Instagram and the rest wait for you"
                     )
                     FeatureRow(
                         icon: "book.fill",
-                        title: "Earn time being productive",
-                        description: "Use Kindle, Duolingo to earn minutes"
+                        title: "Hit your daily goal",
+                        description: "Spend your goal in apps like Kindle or Duolingo"
                     )
                     FeatureRow(
-                        icon: "clock.fill",
-                        title: "Spend time on vice apps",
-                        description: "Unlock social media with earned time"
+                        icon: "lock.open.fill",
+                        title: "Claim your unlock",
+                        description: "Your socials are yours until midnight"
                     )
                     FeatureRow(
-                        icon: "arrow.clockwise",
-                        title: "Daily reset at midnight",
-                        description: "Fresh start every day, no rollover"
+                        icon: "flame.fill",
+                        title: "Build your streak",
+                        description: "A fresh goal every day. Keep the streak alive"
                     )
                 }
                 .padding(.horizontal, ClepsySpacing.md)

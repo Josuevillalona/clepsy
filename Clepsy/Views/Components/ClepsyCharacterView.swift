@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ClepsyCharacterView: View {
-    let balancePercentage: Double // 0.0 to 1.0
+    let fillPercentage: Double // 0.0 to 1.0, today's goal progress
     let expression: ClepsyExpression
 
     // Idle floating
@@ -22,6 +22,9 @@ struct ClepsyCharacterView: View {
                 .resizable()
                 .scaledToFit()
                 .scaleEffect(breathingScale)
+                // Cross-fade between sand levels as the fill changes
+                .id(bodyImageName)
+                .transition(.opacity)
 
             // Layer 2: The Face (Expression)
             if expression == .celebrating {
@@ -245,7 +248,7 @@ struct ClepsyCharacterView: View {
     // MARK: - Asset Selection
 
     private var bodyImageName: String {
-        switch balancePercentage {
+        switch fillPercentage {
         case 0..<0.125:
             return "body_level_0"
         case 0.125..<0.375:
@@ -330,7 +333,7 @@ enum ClepsyExpression {
 #Preview("Patient - Empty") {
     ZStack {
         Color.clepsyMidnight.ignoresSafeArea()
-        ClepsyCharacterView(balancePercentage: 0.0, expression: .patient)
+        ClepsyCharacterView(fillPercentage: 0.0, expression: .patient)
             .scaleEffect(0.7)
     }
 }
@@ -338,7 +341,7 @@ enum ClepsyExpression {
 #Preview("Encouraging - Half") {
     ZStack {
         Color.clepsyMidnight.ignoresSafeArea()
-        ClepsyCharacterView(balancePercentage: 0.5, expression: .encouraging)
+        ClepsyCharacterView(fillPercentage: 0.5, expression: .encouraging)
             .scaleEffect(0.7)
     }
 }
@@ -346,7 +349,7 @@ enum ClepsyExpression {
 #Preview("Celebrating - Full") {
     ZStack {
         Color.clepsyMidnight.ignoresSafeArea()
-        ClepsyCharacterView(balancePercentage: 1.0, expression: .celebrating)
+        ClepsyCharacterView(fillPercentage: 1.0, expression: .celebrating)
             .scaleEffect(0.7)
     }
 }
@@ -354,21 +357,21 @@ enum ClepsyExpression {
 #Preview("All Expressions") {
     HStack(spacing: 20) {
         VStack {
-            ClepsyCharacterView(balancePercentage: 0.2, expression: .patient)
+            ClepsyCharacterView(fillPercentage: 0.2, expression: .patient)
                 .scaleEffect(0.4)
             Text("Patient")
                 .font(.caption)
                 .foregroundColor(.clepsyTextPrimary)
         }
         VStack {
-            ClepsyCharacterView(balancePercentage: 0.5, expression: .encouraging)
+            ClepsyCharacterView(fillPercentage: 0.5, expression: .encouraging)
                 .scaleEffect(0.4)
             Text("Encouraging")
                 .font(.caption)
                 .foregroundColor(.clepsyTextPrimary)
         }
         VStack {
-            ClepsyCharacterView(balancePercentage: 1.0, expression: .celebrating)
+            ClepsyCharacterView(fillPercentage: 1.0, expression: .celebrating)
                 .scaleEffect(0.4)
             Text("Celebrating")
                 .font(.caption)

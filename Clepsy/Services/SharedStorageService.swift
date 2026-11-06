@@ -50,8 +50,7 @@ class SharedStorageService {
                     events.append(event)
                     let encoded = try JSONEncoder().encode(events)
                     try encoded.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: events)
-                } catch {
+                                    } catch {
                     print("Error appending event: \(error)")
                 }
             }
@@ -100,8 +99,7 @@ class SharedStorageService {
                 do {
                     let emptyArray = try JSONEncoder().encode([TimeEvent]())
                     try emptyArray.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: [])
-                } catch {
+                                    } catch {
                     print("Error clearing events: \(error)")
                 }
             }
@@ -125,8 +123,7 @@ class SharedStorageService {
                     events.removeAll { ids.contains($0.id) }
                     let encoded = try JSONEncoder().encode(events)
                     try encoded.write(to: url, options: .atomic)
-                    self.setPendingDelta(events: events)
-                } catch {
+                                    } catch {
                     print("Error removing events: \(error)")
                 }
             }
@@ -149,72 +146,6 @@ class SharedStorageService {
         return try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
     }
 
-    // MARK: - Balance Mirror (readable by shield extensions)
-
-    /// Mirrors the main app's saved balance. Does not include pending events.
-    func saveBalanceSeconds(_ seconds: Int) {
-        sharedDefaults?.set(seconds, forKey: "balanceSeconds")
-    }
-
-    /// Effective balance right now: last saved balance plus events the main
-    /// app hasn't consumed yet.
-    func currentBalanceSeconds() -> Int {
-        let saved = sharedDefaults?.integer(forKey: "balanceSeconds") ?? 0
-        let pending = getEvents().reduce(0) { total, event in
-            switch event.type {
-            case .earned: return total + event.seconds
-            case .spent:  return total - event.seconds
-            }
-        }
-        return max(0, saved + pending)
-    }
-
-    /// Same as `currentBalanceSeconds` but reads only UserDefaults — no file
-    /// coordination. Use from the shield configuration extension, which gets
-    /// killed by the system if it doesn't respond almost instantly.
-    func fastBalanceSeconds() -> Int {
-        let saved = sharedDefaults?.integer(forKey: "balanceSeconds") ?? 0
-        let pending = sharedDefaults?.integer(forKey: "pendingDeltaSeconds") ?? 0
-        return max(0, saved + pending)
-    }
-
-    /// Keeps a UserDefaults mirror of the net pending-event total so shield
-    /// extensions can compute the balance without touching the events file.
-    private func setPendingDelta(events: [TimeEvent]) {
-        let delta = events.reduce(0) { total, event in
-            switch event.type {
-            case .earned: return total + event.seconds
-            case .spent:  return total - event.seconds
-            }
-        }
-        sharedDefaults?.set(delta, forKey: "pendingDeltaSeconds")
-    }
-
-    // MARK: - Spending Session State
-
-    /// A session starts when the user chooses to use their earned time from a
-    /// shield: all vice apps unshield, and the balance drains only while a
-    /// vice app is actually in use (1-minute usage thresholds). The session
-    /// ends when the balance is exhausted.
-    func saveSessionActive(_ active: Bool) {
-        sharedDefaults?.set(active, forKey: "sessionActive")
-    }
-
-    var isSessionActive: Bool {
-        sharedDefaults?.bool(forKey: "sessionActive") ?? false
-    }
-
-    /// When the current session's metering interval is scheduled to end.
-    /// Restarting monitoring also fires intervalDidEnd for the old interval,
-    /// so the monitor compares against this to tell a real lapse from that.
-    func saveSessionMeteringEnd(_ date: Date) {
-        sharedDefaults?.set(date, forKey: "sessionMeteringEnd")
-    }
-
-    var sessionMeteringEnd: Date? {
-        sharedDefaults?.object(forKey: "sessionMeteringEnd") as? Date
-    }
-
     // MARK: - Notifications Toggle Mirror
 
     /// Mirror of the user's notifications setting so extensions can honor it
@@ -227,22 +158,132 @@ class SharedStorageService {
         (sharedDefaults?.object(forKey: "notificationsEnabled") as? Bool) ?? true
     }
 
-    // MARK: - Last Shield Screen Record
+    // MARK: - Daily Goal State (fast path: UserDefaults only)
 
-    private let shieldStateKey = "shieldShowedBalanceByToken"
-
-    /// The configuration extension records whether the screen it returned for
-    /// an app offered an unlock. iOS caches shield appearances, so the action
-    /// extension uses this to detect taps on a stale screen. Keyed by
-    /// base64-encoded token data.
-    func setShieldShowedBalance(_ showedBalance: Bool, tokenKey: String) {
-        var states = (sharedDefaults?.dictionary(forKey: shieldStateKey) as? [String: Bool]) ?? [:]
-        states[tokenKey] = showedBalance
-        sharedDefaults?.set(states, forKey: shieldStateKey)
+    /// Today's goal, written by the app at rollover and whenever it changes
+    func saveGoalToday(minutes: Int, day: String) {
+        sharedDefaults?.set(minutes, forKey: "goalMinutesToday")
+        sharedDefaults?.set(day, forKey: "goalDay")
     }
 
-    func shieldShowedBalance(tokenKey: String) -> Bool? {
-        ((sharedDefaults?.dictionary(forKey: shieldStateKey) as? [String: Bool]) ?? [:])[tokenKey]
+    /// The plan's current goal, for days the app hasn't rolled over yet
+    func saveGoalBase(_ minutes: Int) {
+        sharedDefaults?.set(minutes, forKey: "goalMinutesBase")
     }
+
+    func goalMinutes(for day: String) -> Int {
+        if sharedDefaults?.string(forKey: "goalDay") == day,
+           let today = sharedDefaults?.object(forKey: "goalMinutesToday") as? Int {
+            return today
+        }
+        return (sharedDefaults?.object(forKey: "goalMinutesBase") as? Int) ?? GoalPlan.default.currentGoal
+    }
+
+    /// Written by the monitor as earn thresholds fire
+    var earnState: EarnState? {
+        guard let day = sharedDefaults?.string(forKey: "earnDay") else { return nil }
+        return EarnState(
+            day: day,
+            minutes: sharedDefaults?.integer(forKey: "earnMinutes") ?? 0,
+            reached: sharedDefaults?.bool(forKey: "earnReached") ?? false
+        )
+    }
+
+    func saveEarnState(_ state: EarnState) {
+        sharedDefaults?.set(state.day, forKey: "earnDay")
+        sharedDefaults?.set(state.minutes, forKey: "earnMinutes")
+        sharedDefaults?.set(state.reached, forKey: "earnReached")
+    }
+
+    /// Minutes to add to iOS's count, which starts over at each monitoring
+    /// restart (see EarnRules)
+    func earnCarry(for day: String) -> Int {
+        guard sharedDefaults?.string(forKey: "earnCarryDay") == day else { return 0 }
+        return sharedDefaults?.integer(forKey: "earnCarry") ?? 0
+    }
+
+    private func saveEarnCarry(_ carry: Int, day: String) {
+        sharedDefaults?.set(carry, forKey: "earnCarry")
+        sharedDefaults?.set(day, forKey: "earnCarryDay")
+    }
+
+    private func earnedMinutes(on day: String) -> Int {
+        earnState.flatMap { $0.day == day ? $0.minutes : nil } ?? 0
+    }
+
+    /// Call right before restarting monitoring: iOS's count goes back to 0,
+    /// so today's minutes so far carry over
+    func prepareForMonitoringRestart(today: String) {
+        saveEarnCarry(earnedMinutes(on: today), day: today)
+    }
+
+    /// Starts today's goal over from 0 and locks it again. With
+    /// `clearHistory`, also forgets every reached day ("Reset all data").
+    func resetProgress(today: String, clearHistory: Bool) {
+        // iOS's current run is at (minutes - carry); hide all of it
+        saveEarnCarry(earnCarry(for: today) - earnedMinutes(on: today), day: today)
+        saveEarnState(EarnState(day: today, minutes: 0, reached: false))
+        saveUnlockedDay(nil)
+
+        let kept = clearHistory ? [] : reachedDays.filter { $0 != today }.sorted()
+        sharedDefaults?.set(kept, forKey: "reachedDays")
+    }
+
+    /// When the earning schedule was last (re)started (see MonitoringRules)
+    var monitoringStartedAt: Date? {
+        sharedDefaults?.object(forKey: "monitoringStartedAt") as? Date
+    }
+
+    func recordMonitoringStarted(at date: Date) {
+        sharedDefaults?.set(date, forKey: "monitoringStartedAt")
+    }
+
+    // MARK: - Diagnostics (read off the device when tracking misbehaves)
+
+    func recordEarnEvent(_ name: String, at date: Date) {
+        sharedDefaults?.set(name, forKey: "diagLastEarnEvent")
+        sharedDefaults?.set(date, forKey: "diagLastEarnEventAt")
+    }
+
+    var lastEarnEventAt: Date? {
+        sharedDefaults?.object(forKey: "diagLastEarnEventAt") as? Date
+    }
+
+
+    private static let reachedDaysLimit = 60
+
+    /// Days the goal was reached, so the app can roll streaks forward over
+    /// days it never ran on. Keeps the most recent 60.
+    var reachedDays: Set<String> {
+        Set(sharedDefaults?.stringArray(forKey: "reachedDays") ?? [])
+    }
+
+    func addReachedDay(_ day: String) {
+        var days = reachedDays
+        days.insert(day)
+        // Day keys sort chronologically as strings
+        let kept = days.sorted().suffix(Self.reachedDaysLimit)
+        sharedDefaults?.set(Array(kept), forKey: "reachedDays")
+    }
+
+    /// The day the user claimed their unlock; shields stay off until it changes
+    var unlockedDay: String? {
+        sharedDefaults?.string(forKey: "unlockedDay")
+    }
+
+    func saveUnlockedDay(_ day: String?) {
+        sharedDefaults?.set(day, forKey: "unlockedDay")
+    }
+
+    // MARK: - Haptics Toggle Mirror
+
+    func saveHapticsEnabled(_ enabled: Bool) {
+        sharedDefaults?.set(enabled, forKey: "hapticsEnabled")
+    }
+
+    var hapticsEnabled: Bool {
+        (sharedDefaults?.object(forKey: "hapticsEnabled") as? Bool) ?? true
+    }
+
 
 }

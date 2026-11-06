@@ -5,13 +5,13 @@ class PersistenceService: ObservableObject {
     private let userDefaults: UserDefaults
 
     private enum Keys {
-        static let timeBalance = "timeBalance"
         static let userSettings = "userSettings"
-        static let lastResetDate = "lastResetDate"
         static let viceSelection = "viceSelection"
         static let productiveSelection = "productiveSelection"
-        static let todayEarned = "todayEarnedSeconds"
-        static let todaySpent = "todaySpentSeconds"
+        static let goalPlan = "goalPlan"
+        static let streak = "streakState"
+        static let badges = "badges"
+        static let unseenBadges = "unseenBadges"
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -23,27 +23,6 @@ class PersistenceService: ObservableObject {
             return nil
         }
         self.init(userDefaults: userDefaults)
-    }
-
-    // MARK: - Time Balance
-
-    func saveTimeBalance(_ balance: TimeBalance) {
-        do {
-            let encoded = try JSONEncoder().encode(balance)
-            userDefaults.set(encoded, forKey: Keys.timeBalance)
-            // Mirror to App Group so shield extensions can show/spend the balance
-            SharedStorageService().saveBalanceSeconds(balance.currentSeconds)
-        } catch {
-            print("❌ Error encoding TimeBalance: \(error)")
-        }
-    }
-
-    func loadTimeBalance() -> TimeBalance {
-        guard let data = userDefaults.data(forKey: Keys.timeBalance),
-              let balance = try? JSONDecoder().decode(TimeBalance.self, from: data) else {
-            return TimeBalance()
-        }
-        return balance
     }
 
     // MARK: - User Settings
@@ -67,37 +46,35 @@ class PersistenceService: ObservableObject {
         return settings
     }
 
-    // MARK: - Last Reset Date
+    // MARK: - Goal Plan, Streak, Badges
 
-    func saveLastResetDate(_ date: Date) {
-        userDefaults.set(date, forKey: Keys.lastResetDate)
+    func saveGoalPlan(_ plan: GoalPlan) { save(plan, key: Keys.goalPlan) }
+
+    func loadGoalPlan() -> GoalPlan? { load(GoalPlan.self, key: Keys.goalPlan) }
+
+    func saveStreak(_ streak: StreakState) { save(streak, key: Keys.streak) }
+
+    func loadStreak() -> StreakState { load(StreakState.self, key: Keys.streak) ?? StreakState() }
+
+    func saveBadges(_ badges: [BadgeID: Date]) { save(badges, key: Keys.badges) }
+
+    func loadBadges() -> [BadgeID: Date] { load([BadgeID: Date].self, key: Keys.badges) ?? [:] }
+
+    /// Earned at rollover but not yet shown on a claim screen
+    func saveUnseenBadges(_ badges: [BadgeID]) { save(badges, key: Keys.unseenBadges) }
+
+    func loadUnseenBadges() -> [BadgeID] { load([BadgeID].self, key: Keys.unseenBadges) ?? [] }
+
+    private func save<T: Encodable>(_ value: T, key: String) {
+        do {
+            userDefaults.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            print("❌ Error encoding \(key): \(error)")
+        }
     }
 
-    func loadLastResetDate() -> Date? {
-        return userDefaults.object(forKey: Keys.lastResetDate) as? Date
-    }
-
-    // MARK: - Today's Stats
-
-    /// Today's earned/spent totals survive app relaunches — the goal bar and
-    /// streaks are driven by these, not by the (spendable) balance.
-    func saveTodayStats(earnedSeconds: Int, spentSeconds: Int) {
-        userDefaults.set(earnedSeconds, forKey: Keys.todayEarned)
-        userDefaults.set(spentSeconds, forKey: Keys.todaySpent)
-    }
-
-    func loadTodayStats() -> (earnedSeconds: Int, spentSeconds: Int) {
-        (userDefaults.integer(forKey: Keys.todayEarned),
-         userDefaults.integer(forKey: Keys.todaySpent))
-    }
-
-    // MARK: - Daily Reset
-
-    func performDailyReset() {
-        let balance = TimeBalance(currentSeconds: 0)
-        saveTimeBalance(balance)
-        saveTodayStats(earnedSeconds: 0, spentSeconds: 0)
-        saveLastResetDate(Date())
+    private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        userDefaults.data(forKey: key).flatMap { try? JSONDecoder().decode(type, from: $0) }
     }
 
     // MARK: - FamilyActivitySelection
@@ -138,12 +115,12 @@ class PersistenceService: ObservableObject {
     // MARK: - Testing Helper
 
     func clearAll() {
-        userDefaults.removeObject(forKey: Keys.timeBalance)
         userDefaults.removeObject(forKey: Keys.userSettings)
-        userDefaults.removeObject(forKey: Keys.lastResetDate)
         userDefaults.removeObject(forKey: Keys.viceSelection)
         userDefaults.removeObject(forKey: Keys.productiveSelection)
-        userDefaults.removeObject(forKey: Keys.todayEarned)
-        userDefaults.removeObject(forKey: Keys.todaySpent)
+        userDefaults.removeObject(forKey: Keys.goalPlan)
+        userDefaults.removeObject(forKey: Keys.streak)
+        userDefaults.removeObject(forKey: Keys.badges)
+        userDefaults.removeObject(forKey: Keys.unseenBadges)
     }
 }

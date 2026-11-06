@@ -37,13 +37,12 @@ struct OnboardingContainerView: View {
                         selection: $viewModel.productiveSelection
                     )
                 case 4:
-                    DailyGoalView(
-                        onContinue: {
-                            viewModel.completeOnboarding()
-                            hasCompletedOnboarding = true
-                        },
-                        onBack: viewModel.previousStep
-                    )
+                    GoalSetupView(doneTitle: "Start", onBack: viewModel.previousStep) { mode, goal in
+                        GoalStore().setPlan(mode: mode, goal: goal)
+                        // Locks vice apps right away: day one starts locked
+                        viewModel.completeOnboarding()
+                        hasCompletedOnboarding = true
+                    }
                 default:
                     WelcomeView(onContinue: viewModel.nextStep)
                 }

@@ -2,23 +2,27 @@ import SwiftUI
 import FamilyControls
 
 struct SettingsView: View {
+    @ObservedObject var store: GoalStore
     @StateObject private var viewModel = SettingsViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var showVicePicker = false
     @State private var showProductivePicker = false
+    @State private var showGoalSetup = false
+    /// A lowered goal waiting for confirmation, since it can unlock today early
+    @State private var pendingLowerGoal: (mode: GoalMode, goal: Int)?
 
     var body: some View {
         NavigationStack {
             List {
                 // Section 1: Daily Goal
-                Section("Daily Goal") {
+                Section {
                     Button {
-                        viewModel.showGoalPicker = true
+                        showGoalSetup = true
                     } label: {
                         HStack {
-                            Label("Daily Goal", systemImage: "target")
+                            Label("Daily goal", systemImage: "target")
                             Spacer()
-                            Text(viewModel.formattedDailyGoal)
+                            Text(GoalFormatting.plan(store.plan))
                                 .foregroundColor(.secondary)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -26,6 +30,12 @@ struct SettingsView: View {
                         }
                     }
                     .foregroundColor(.primary)
+                } header: {
+                    Text("Daily Goal")
+                } footer: {
+                    if let pending = store.plan.pendingGoal {
+                        Text("Changes to \(GoalFormatting.minutes(pending)) tomorrow. Today's goal is already done.")
+                    }
                 }
 
                 // Section 2: Vice Apps
@@ -67,7 +77,10 @@ struct SettingsView: View {
                 // Section 4: Notifications
                 Section("Notifications") {
                     Toggle(isOn: $viewModel.notificationsEnabled) {
-                        Label("Milestone notifications", systemImage: "bell")
+                        Label("Notifications", systemImage: "bell")
+                    }
+                    Toggle(isOn: $viewModel.hapticsEnabled) {
+                        Label("Haptics", systemImage: "iphone.radiowaves.left.and.right")
                     }
 
                     if viewModel.notificationsEnabled {
@@ -96,6 +109,23 @@ struct SettingsView: View {
                         Label("Reset all data", systemImage: "trash")
                     }
                 }
+
+                #if DEBUG
+                // Testing only: start today's goal over without redoing onboarding
+                Section {
+                    Button {
+                        store.resetToday()
+                        AppBlockingService().applyViceAppBlocks()
+                        HapticsService.shared.success()
+                    } label: {
+                        Label("Reset today's minutes", systemImage: "arrow.counterclockwise")
+                    }
+                } header: {
+                    Text("Testing")
+                } footer: {
+                    Text("Today's goal starts over from 0 and your apps lock again. Your streak and badges stay.")
+                }
+                #endif
 
                 // Section 6: About
                 Section("About") {
@@ -157,12 +187,32 @@ struct SettingsView: View {
                     }
                 }
             }
-            .sheet(isPresented: $viewModel.showGoalPicker) {
-                GoalPickerSheet(
-                    selectedGoal: $viewModel.dailyGoalMinutes,
-                    isPresented: $viewModel.showGoalPicker
-                )
-                .presentationDetents([.medium])
+            .sheet(isPresented: $showGoalSetup) {
+                NavigationStack {
+                    GoalSetupView(plan: store.plan, doneTitle: "Save") { mode, goal in
+                        saveGoal(mode: mode, goal: goal)
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showGoalSetup = false }
+                        }
+                    }
+                }
+                .preferredColorScheme(.dark)
+            }
+            .alert(
+                "Lower today's goal?",
+                isPresented: Binding(get: { pendingLowerGoal != nil }, set: { if !$0 { pendingLowerGoal = nil } })
+            ) {
+                Button("Keep \(GoalFormatting.minutes(store.todayGoal))", role: .cancel) { pendingLowerGoal = nil }
+                Button("Lower it") {
+                    if let pending = pendingLowerGoal { store.setPlan(mode: pending.mode, goal: pending.goal) }
+                    pendingLowerGoal = nil
+                }
+            } message: {
+                if let pending = pendingLowerGoal {
+                    Text("Today's goal becomes \(GoalFormatting.minutes(pending.goal)). That's fine. It's your goal, just make sure it's what you want.")
+                }
             }
             .sheet(isPresented: $viewModel.showIntervalPicker) {
                 IntervalPickerSheet(
@@ -175,6 +225,7 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Reset", role: .destructive) {
                     viewModel.resetAllData()
+                    store.resetAll()
                 }
             } message: {
                 Text("This will delete all your progress, settings, and start fresh. This cannot be undone.")
@@ -188,60 +239,14 @@ struct SettingsView: View {
             }
         }
     }
-}
 
-// MARK: - Goal Picker Sheet
-
-struct GoalPickerSheet: View {
-    @Binding var selectedGoal: Int
-    @Binding var isPresented: Bool
-
-    private let goalOptions = [15, 30, 60, 120, 180, 240]
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text("How much time do you want to earn daily?")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                Picker("Daily Goal", selection: $selectedGoal) {
-                    ForEach(goalOptions, id: \.self) { minutes in
-                        Text(formatMinutes(minutes)).tag(minutes)
-                    }
-                }
-                .pickerStyle(.wheel)
-
-                Spacer()
-            }
-            .padding(.top)
-            .navigationTitle("Set Daily Goal")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        isPresented = false
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        isPresented = false
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private func formatMinutes(_ minutes: Int) -> String {
-        if minutes < 60 {
-            return "\(minutes) minutes"
-        } else if minutes == 60 {
-            return "1 hour"
+    /// Lowering today's (unreached) goal asks first; everything else saves
+    private func saveGoal(mode: GoalMode, goal: Int) {
+        showGoalSetup = false
+        if !store.reachedToday && goal < store.todayGoal {
+            pendingLowerGoal = (mode, goal)
         } else {
-            return "\(minutes / 60) hours"
+            store.setPlan(mode: mode, goal: goal)
         }
     }
 }
@@ -304,27 +309,27 @@ struct AboutClepsyView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 aboutSection(
-                    icon: "clock.badge.checkmark",
-                    title: "Earn Time",
-                    description: "Use productive apps like Kindle, Duolingo, or Khan Academy to earn screen time."
+                    icon: "target",
+                    title: "Set a Daily Goal",
+                    description: "Pick how much productive time you want each day, or build up to it a little at a time."
                 )
 
                 aboutSection(
                     icon: "lock.shield",
-                    title: "Apps Are Blocked",
-                    description: "Vice apps like TikTok and Instagram are blocked until you earn enough time."
+                    title: "Socials Start Locked",
+                    description: "Vice apps like TikTok and Instagram stay locked until you hit your goal in apps like Kindle or Duolingo."
                 )
 
                 aboutSection(
                     icon: "lock.open",
-                    title: "Unlock & Enjoy",
-                    description: "Once you have enough balance, unlock your vice apps guilt-free."
+                    title: "Claim Your Unlock",
+                    description: "Hit your goal, open Clepsy and claim it. Your socials are yours for the rest of the day, guilt-free."
                 )
 
                 aboutSection(
                     icon: "arrow.clockwise",
                     title: "Daily Reset",
-                    description: "Your balance resets each day at midnight. Start fresh every morning!"
+                    description: "Apps lock again at midnight. Hit your goal each day to grow your streak and earn badges."
                 )
             }
             .padding()
@@ -352,5 +357,5 @@ struct AboutClepsyView: View {
 }
 
 #Preview {
-    SettingsView()
+    SettingsView(store: GoalStore())
 }
