@@ -125,18 +125,28 @@ enum EarnRules {
         return Int(name.dropFirst(eventPrefix.count))
     }
 
-    /// Thresholds can be redelivered or arrive out of order, so the count
-    /// only ever moves up and the goal is reported reached exactly once.
-    /// `offset` is today's total when monitoring was last restarted, since a
-    /// restart starts the thresholds counting from zero again.
-    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int, offset: Int = 0)
+    /// Thresholds can be redelivered or arrive out of order (and a monitoring
+    /// restart re-sends every minute already used today), so the count only
+    /// ever moves up and the goal is reported reached exactly once.
+    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int)
         -> (state: EarnState, justReached: Bool) {
         var state = (stored?.day == today ? stored : nil)
             ?? EarnState(day: today, minutes: 0, reached: false)
-        state.minutes = max(state.minutes, eventMinute + offset)
+        state.minutes = max(state.minutes, eventMinute)
 
         let justReached = !state.reached && state.minutes >= goal
         if justReached { state.reached = true }
         return (state, justReached)
+    }
+}
+
+// MARK: - Monitoring
+
+enum MonitoringRules {
+    /// iOS can stop delivering a repeating schedule's thresholds on a new day
+    /// (seen on device: no earn events at all on day two). Restarting the
+    /// schedule once a day re-sends today's minutes, which EarnRules dedupes.
+    static func shouldRestart(isActive: Bool, startedDay: String?, today: String) -> Bool {
+        !isActive || startedDay != today
     }
 }

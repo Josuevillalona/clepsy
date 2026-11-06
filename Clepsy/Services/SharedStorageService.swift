@@ -195,15 +195,13 @@ class SharedStorageService {
         sharedDefaults?.set(state.reached, forKey: "earnReached")
     }
 
-    /// Today's earned minutes at the last monitoring restart (see EarnRules)
-    func saveEarnOffset(_ minutes: Int, day: String) {
-        sharedDefaults?.set(minutes, forKey: "earnOffset")
-        sharedDefaults?.set(day, forKey: "earnOffsetDay")
+    /// The day the earning schedule was last (re)started (see MonitoringRules)
+    var monitoringStartDay: String? {
+        sharedDefaults?.string(forKey: "monitoringStartDay")
     }
 
-    func earnOffset(for day: String) -> Int {
-        guard sharedDefaults?.string(forKey: "earnOffsetDay") == day else { return 0 }
-        return sharedDefaults?.integer(forKey: "earnOffset") ?? 0
+    func saveMonitoringStartDay(_ day: String) {
+        sharedDefaults?.set(day, forKey: "monitoringStartDay")
     }
 
     private static let reachedDaysLimit = 60

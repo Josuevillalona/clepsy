@@ -19,12 +19,19 @@ class UsageTrackingService: ObservableObject {
     /// minute of productive-app use, up to the largest goal. The monitor turns
     /// "earn_N" into today's minutes, and the schedule's start each midnight
     /// is when vice apps lock again. Restarting an active schedule resets the
-    /// day's accumulated usage, so this is a no-op while it's running.
+    /// thresholds, which then re-fire for today's usage so far (harmless:
+    /// EarnRules only moves the count up). Restarts at most once a day, since
+    /// iOS can stop delivering a repeating schedule's events on a new day.
     func startDailyMonitoring(productiveSelection: FamilyActivitySelection, force: Bool = false) {
         guard !productiveSelection.applicationTokens.isEmpty ||
               !productiveSelection.categoryTokens.isEmpty else { return }
 
-        if !force && center.activities.contains(.productiveApps) {
+        let today = DayKey.string(for: Date())
+        guard force || MonitoringRules.shouldRestart(
+            isActive: center.activities.contains(.productiveApps),
+            startedDay: sharedStorage.monitoringStartDay,
+            today: today
+        ) else {
             isMonitoringActive = true
             return
         }
@@ -45,14 +52,10 @@ class UsageTrackingService: ObservableObject {
             )
         }
 
-        // A restart counts from zero again; carry today's minutes forward
-        let today = DayKey.string(for: Date())
-        let earnedToday = sharedStorage.earnState.flatMap { $0.day == today ? $0.minutes : nil } ?? 0
-        sharedStorage.saveEarnOffset(earnedToday, day: today)
-
         do {
             center.stopMonitoring([.productiveApps])
             try center.startMonitoring(.productiveApps, during: schedule, events: events)
+            sharedStorage.saveMonitoringStartDay(today)
             isMonitoringActive = true
         } catch {
             print("❌ Failed to start daily monitoring: \(error)")

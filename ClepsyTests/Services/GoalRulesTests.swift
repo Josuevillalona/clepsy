@@ -103,11 +103,22 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertEqual(result.state, EarnState(day: "2026-11-04", minutes: 1, reached: false))
     }
 
-    func testOffsetCarriesMinutesAcrossAMonitoringRestart() {
-        // 20 minutes before a restart; the restarted count begins at 1 again
-        let stored = EarnState(day: "2026-11-04", minutes: 20, reached: false)
-        let result = EarnRules.apply(eventMinute: 1, today: "2026-11-04", stored: stored, goal: 30, offset: 20)
-        XCTAssertEqual(result.state.minutes, 21)
+    func testMonitoringRestartsOncePerDay() {
+        // iOS can stop delivering a repeating schedule's thresholds on a new
+        // day; restarting re-sends today's minutes, which EarnRules dedupes
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: false, startedDay: "2026-11-05", today: "2026-11-05"))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-04", today: "2026-11-05"))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: nil, today: "2026-11-05"))
+        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-05", today: "2026-11-05"))
+    }
+
+    func testRestartRefiringTodaysMinutesDoesNotDoubleCount() {
+        let stored = EarnState(day: "2026-11-05", minutes: 3, reached: false)
+        var state = stored
+        for minute in 1...3 {
+            state = EarnRules.apply(eventMinute: minute, today: "2026-11-05", stored: state, goal: 5).state
+        }
+        XCTAssertEqual(state.minutes, 3)
     }
 
     func testParseEventName() {
@@ -168,12 +179,6 @@ final class SharedGoalStateTests: XCTestCase {
         let state = EarnState(day: "2026-11-04", minutes: 12, reached: false)
         sut.saveEarnState(state)
         XCTAssertEqual(sut.earnState, state)
-    }
-
-    func testEarnOffsetIsPerDay() {
-        sut.saveEarnOffset(20, day: "2026-11-04")
-        XCTAssertEqual(sut.earnOffset(for: "2026-11-04"), 20)
-        XCTAssertEqual(sut.earnOffset(for: "2026-11-05"), 0)
     }
 
     func testReachedDaysKeepsLatestSixty() {
