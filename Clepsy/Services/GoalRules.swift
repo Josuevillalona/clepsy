@@ -128,11 +128,13 @@ enum EarnRules {
     /// Thresholds can be redelivered or arrive out of order (and a monitoring
     /// restart re-sends every minute already used today), so the count only
     /// ever moves up and the goal is reported reached exactly once.
-    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int)
+    /// `baseline` is how many of today's minutes a reset set aside: iOS keeps
+    /// counting from midnight, so they're subtracted from every later event.
+    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int, baseline: Int = 0)
         -> (state: EarnState, justReached: Bool) {
         var state = (stored?.day == today ? stored : nil)
             ?? EarnState(day: today, minutes: 0, reached: false)
-        state.minutes = max(state.minutes, eventMinute)
+        state.minutes = max(state.minutes, eventMinute - baseline)
 
         let justReached = !state.reached && state.minutes >= goal
         if justReached { state.reached = true }

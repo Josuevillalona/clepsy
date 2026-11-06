@@ -121,6 +121,12 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertEqual(state.minutes, 3)
     }
 
+    func testBaselineHidesMinutesFromBeforeAReset() {
+        let stored = EarnState(day: "2026-11-05", minutes: 0, reached: false)
+        XCTAssertEqual(EarnRules.apply(eventMinute: 5, today: "2026-11-05", stored: stored, goal: 30, baseline: 3).state.minutes, 2)
+        XCTAssertEqual(EarnRules.apply(eventMinute: 2, today: "2026-11-05", stored: stored, goal: 30, baseline: 3).state.minutes, 0)
+    }
+
     func testParseEventName() {
         XCTAssertEqual(EarnRules.minute(fromEventName: "earn_12"), 12)
         XCTAssertNil(EarnRules.minute(fromEventName: "spend_3"))
@@ -179,6 +185,35 @@ final class SharedGoalStateTests: XCTestCase {
         let state = EarnState(day: "2026-11-04", minutes: 12, reached: false)
         sut.saveEarnState(state)
         XCTAssertEqual(sut.earnState, state)
+    }
+
+    func testResetTodayStartsCountingFromZero() {
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 4, reached: true))
+        sut.addReachedDay("2026-11-04")
+        sut.addReachedDay("2026-11-05")
+        sut.saveUnlockedDay("2026-11-05")
+
+        sut.resetProgress(today: "2026-11-05", clearHistory: false)
+
+        XCTAssertEqual(sut.earnState, EarnState(day: "2026-11-05", minutes: 0, reached: false))
+        XCTAssertEqual(sut.earnBaseline(for: "2026-11-05"), 4)
+        XCTAssertNil(sut.unlockedDay)
+        XCTAssertEqual(sut.reachedDays, ["2026-11-04"])
+    }
+
+    func testRepeatedResetsAccumulateTheBaseline() {
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 4, reached: false))
+        sut.resetProgress(today: "2026-11-05", clearHistory: false)
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 2, reached: false))
+        sut.resetProgress(today: "2026-11-05", clearHistory: false)
+        XCTAssertEqual(sut.earnBaseline(for: "2026-11-05"), 6)
+        XCTAssertEqual(sut.earnBaseline(for: "2026-11-06"), 0)
+    }
+
+    func testFullResetClearsHistory() {
+        sut.addReachedDay("2026-11-04")
+        sut.resetProgress(today: "2026-11-05", clearHistory: true)
+        XCTAssertTrue(sut.reachedDays.isEmpty)
     }
 
     func testReachedDaysKeepsLatestSixty() {

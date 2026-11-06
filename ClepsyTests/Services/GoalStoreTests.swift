@@ -243,4 +243,28 @@ final class GoalStoreTests: XCTestCase {
         store.setPlan(mode: .buildUp(target: 45), goal: 20)
         XCTAssertEqual(store.plan.consecutiveReached, 2)
     }
+
+    func testResetTodayRelocksAndClearsTheCelebration() {
+        earned(30, reached: true)
+        let store = makeStore()
+        store.refresh()
+        store.claim()
+        store.resetToday()
+        XCTAssertEqual(store.status, .locked(minutesToGo: 30))
+        XCTAssertNil(store.pendingCelebration)
+        XCTAssertEqual(store.earnedMinutes, 0)
+    }
+
+    func testResetAllForgetsStreakBadgesAndPlan() {
+        persistence.saveStreak(StreakState(count: 6, lastProcessedDay: "2026-11-03"))
+        persistence.saveBadges([.firstGoal: now])
+        setPlan(GoalPlan(mode: .fixed, currentGoal: 60, consecutiveReached: 0, pendingGoal: nil))
+        let store = makeStore()
+        store.refresh()
+        store.resetAll()
+        XCTAssertEqual(store.streak.count, 0)
+        XCTAssertTrue(store.badges.isEmpty)
+        XCTAssertEqual(store.plan, .default)
+        XCTAssertTrue(persistence.loadBadges().isEmpty)
+    }
 }

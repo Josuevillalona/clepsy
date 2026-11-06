@@ -47,7 +47,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             eventMinute: minute,
             today: today,
             stored: sharedStorage.earnState,
-            goal: sharedStorage.goalMinutes(for: today)
+            goal: sharedStorage.goalMinutes(for: today),
+            baseline: sharedStorage.earnBaseline(for: today)
         )
         sharedStorage.saveEarnState(result.state)
 

@@ -110,6 +110,23 @@ struct SettingsView: View {
                     }
                 }
 
+                #if DEBUG
+                // Testing only: start today's goal over without redoing onboarding
+                Section {
+                    Button {
+                        store.resetToday()
+                        AppBlockingService().applyViceAppBlocks()
+                        HapticsService.shared.success()
+                    } label: {
+                        Label("Reset today's minutes", systemImage: "arrow.counterclockwise")
+                    }
+                } header: {
+                    Text("Testing")
+                } footer: {
+                    Text("Today's goal starts over from 0 and your apps lock again. Your streak and badges stay.")
+                }
+                #endif
+
                 // Section 6: About
                 Section("About") {
                     NavigationLink {
@@ -208,6 +225,7 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Reset", role: .destructive) {
                     viewModel.resetAllData()
+                    store.resetAll()
                 }
             } message: {
                 Text("This will delete all your progress, settings, and start fresh. This cannot be undone.")

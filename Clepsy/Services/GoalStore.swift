@@ -206,6 +206,29 @@ final class GoalStore: ObservableObject {
         refresh()
     }
 
+    // MARK: - Reset
+
+    /// Testing aid and part of "Reset all data": today's goal starts over
+    /// from 0 and apps lock again. The streak and badges are left alone.
+    func resetToday(clearHistory: Bool = false) {
+        shared.resetProgress(today: today, clearHistory: clearHistory)
+        dismissedCelebrationDay = nil
+        pendingCelebration = nil
+        refresh()
+    }
+
+    /// "Reset all data": also forgets the plan, streak and badges
+    func resetAll() {
+        plan = .default
+        streak = StreakState()
+        badges = [:]
+        persistence.saveGoalPlan(plan)
+        persistence.saveStreak(streak)
+        persistence.saveBadges(badges)
+        persistence.saveUnseenBadges([])
+        resetToday(clearHistory: true)
+    }
+
     // MARK: - Build-up Offers
 
     func acceptOffer() {

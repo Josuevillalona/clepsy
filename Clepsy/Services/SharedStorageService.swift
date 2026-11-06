@@ -195,6 +195,25 @@ class SharedStorageService {
         sharedDefaults?.set(state.reached, forKey: "earnReached")
     }
 
+    /// Minutes of today a reset set aside (see EarnRules)
+    func earnBaseline(for day: String) -> Int {
+        guard sharedDefaults?.string(forKey: "earnBaselineDay") == day else { return 0 }
+        return sharedDefaults?.integer(forKey: "earnBaseline") ?? 0
+    }
+
+    /// Starts today's goal over from 0 and locks it again. With
+    /// `clearHistory`, also forgets every reached day ("Reset all data").
+    func resetProgress(today: String, clearHistory: Bool) {
+        let counted = earnState.flatMap { $0.day == today ? $0.minutes : nil } ?? 0
+        sharedDefaults?.set(earnBaseline(for: today) + counted, forKey: "earnBaseline")
+        sharedDefaults?.set(today, forKey: "earnBaselineDay")
+        saveEarnState(EarnState(day: today, minutes: 0, reached: false))
+        saveUnlockedDay(nil)
+
+        let kept = clearHistory ? [] : reachedDays.filter { $0 != today }.sorted()
+        sharedDefaults?.set(kept, forKey: "reachedDays")
+    }
+
     /// The day the earning schedule was last (re)started (see MonitoringRules)
     var monitoringStartDay: String? {
         sharedDefaults?.string(forKey: "monitoringStartDay")
