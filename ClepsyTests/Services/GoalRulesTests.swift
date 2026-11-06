@@ -103,30 +103,30 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertEqual(result.state, EarnState(day: "2026-11-04", minutes: 1, reached: false))
     }
 
-    func testMonitoringRestartsWhenStaleOrInactive() {
-        // iOS can stop delivering thresholds while still reporting the
-        // schedule as registered; restarting re-sends today's minutes, which
-        // EarnRules dedupes. Opening Clepsy restarts at most every 5 minutes.
-        let now = Date(timeIntervalSince1970: 1_793_900_000)
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: false, lastStartedAt: now, now: now))
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: nil, now: now))
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: now.addingTimeInterval(-301), now: now))
-        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: now.addingTimeInterval(-120), now: now))
+    // MARK: - Restarts (verified on device: iOS counts from the restart)
+
+    func testCarryAddsMinutesCountedBeforeARestart() {
+        // 4 minutes, then a restart: iOS starts again at earn_1
+        let stored = EarnState(day: "2026-11-05", minutes: 4, reached: false)
+        let result = EarnRules.apply(eventMinute: 1, today: "2026-11-05", stored: stored, goal: 30, carry: 4)
+        XCTAssertEqual(result.state.minutes, 5)
     }
 
-    func testRestartRefiringTodaysMinutesDoesNotDoubleCount() {
-        let stored = EarnState(day: "2026-11-05", minutes: 3, reached: false)
-        var state = stored
-        for minute in 1...3 {
-            state = EarnRules.apply(eventMinute: minute, today: "2026-11-05", stored: state, goal: 5).state
-        }
-        XCTAssertEqual(state.minutes, 3)
-    }
-
-    func testBaselineHidesMinutesFromBeforeAReset() {
+    func testNegativeCarryAfterAResetCountsOnlyNewMinutes() {
+        // iOS had sent earn_4 when the user reset; carry -4 hides those
         let stored = EarnState(day: "2026-11-05", minutes: 0, reached: false)
-        XCTAssertEqual(EarnRules.apply(eventMinute: 5, today: "2026-11-05", stored: stored, goal: 30, baseline: 3).state.minutes, 2)
-        XCTAssertEqual(EarnRules.apply(eventMinute: 2, today: "2026-11-05", stored: stored, goal: 30, baseline: 3).state.minutes, 0)
+        XCTAssertEqual(EarnRules.apply(eventMinute: 5, today: "2026-11-05", stored: stored, goal: 30, carry: -4).state.minutes, 1)
+        XCTAssertEqual(EarnRules.apply(eventMinute: 3, today: "2026-11-05", stored: stored, goal: 30, carry: -4).state.minutes, 0)
+    }
+
+    func testRestartOnlyWhenNeeded() {
+        // Every restart drops the not-yet-reported last minute, so restart
+        // only when tracking isn't running, or a new day has brought nothing
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: false, startedDay: "2026-11-05", lastEventDay: "2026-11-05", today: "2026-11-05"))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-04", lastEventDay: "2026-11-04", today: "2026-11-05"))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: nil, lastEventDay: nil, today: "2026-11-05"))
+        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-05", lastEventDay: nil, today: "2026-11-05"))
+        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-04", lastEventDay: "2026-11-05", today: "2026-11-05"))
     }
 
     func testParseEventName() {
@@ -189,8 +189,18 @@ final class SharedGoalStateTests: XCTestCase {
         XCTAssertEqual(sut.earnState, state)
     }
 
-    func testResetTodayStartsCountingFromZero() {
-        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 4, reached: true))
+    func testRestartCarriesTodaysMinutes() {
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 4, reached: false))
+        sut.prepareForMonitoringRestart(today: "2026-11-05")
+        XCTAssertEqual(sut.earnCarry(for: "2026-11-05"), 4)
+        XCTAssertEqual(sut.earnCarry(for: "2026-11-06"), 0)
+    }
+
+    func testResetStartsCountingFromZero() {
+        // 6 counted: 4 from iOS's current run on top of a carry of 2
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 6, reached: true))
+        sut.prepareForMonitoringRestart(today: "2026-11-05")
+        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 8, reached: true))
         sut.addReachedDay("2026-11-04")
         sut.addReachedDay("2026-11-05")
         sut.saveUnlockedDay("2026-11-05")
@@ -198,18 +208,10 @@ final class SharedGoalStateTests: XCTestCase {
         sut.resetProgress(today: "2026-11-05", clearHistory: false)
 
         XCTAssertEqual(sut.earnState, EarnState(day: "2026-11-05", minutes: 0, reached: false))
-        XCTAssertEqual(sut.earnBaseline(for: "2026-11-05"), 4)
+        // iOS's run is at earn_2 (8 − 6); the next earn_3 must count as 1
+        XCTAssertEqual(sut.earnCarry(for: "2026-11-05"), -2)
         XCTAssertNil(sut.unlockedDay)
         XCTAssertEqual(sut.reachedDays, ["2026-11-04"])
-    }
-
-    func testRepeatedResetsAccumulateTheBaseline() {
-        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 4, reached: false))
-        sut.resetProgress(today: "2026-11-05", clearHistory: false)
-        sut.saveEarnState(EarnState(day: "2026-11-05", minutes: 2, reached: false))
-        sut.resetProgress(today: "2026-11-05", clearHistory: false)
-        XCTAssertEqual(sut.earnBaseline(for: "2026-11-05"), 6)
-        XCTAssertEqual(sut.earnBaseline(for: "2026-11-06"), 0)
     }
 
     func testFullResetClearsHistory() {

@@ -125,16 +125,16 @@ enum EarnRules {
         return Int(name.dropFirst(eventPrefix.count))
     }
 
-    /// Thresholds can be redelivered or arrive out of order (and a monitoring
-    /// restart re-sends every minute already used today), so the count only
-    /// ever moves up and the goal is reported reached exactly once.
-    /// `baseline` is how many of today's minutes a reset set aside: iOS keeps
-    /// counting from midnight, so they're subtracted from every later event.
-    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int, baseline: Int = 0)
+    /// Thresholds can be redelivered or arrive out of order, so the count
+    /// only ever moves up and the goal is reported reached exactly once.
+    /// iOS counts from when monitoring last (re)started (verified on device),
+    /// so `carry` adds the minutes counted before that restart; a reset makes
+    /// it negative to hide the minutes iOS had already sent.
+    static func apply(eventMinute: Int, today: String, stored: EarnState?, goal: Int, carry: Int = 0)
         -> (state: EarnState, justReached: Bool) {
         var state = (stored?.day == today ? stored : nil)
             ?? EarnState(day: today, minutes: 0, reached: false)
-        state.minutes = max(state.minutes, eventMinute - baseline)
+        state.minutes = max(state.minutes, eventMinute + carry)
 
         let justReached = !state.reached && state.minutes >= goal
         if justReached { state.reached = true }
@@ -145,14 +145,12 @@ enum EarnRules {
 // MARK: - Monitoring
 
 enum MonitoringRules {
-    /// Seen on device: iOS can stop delivering a schedule's thresholds while
-    /// still reporting it as registered. Restarting makes iOS re-send the
-    /// minutes already used today (EarnRules dedupes them), so opening Clepsy
-    /// restarts it, at most this often.
-    static let restartInterval: TimeInterval = 5 * 60
-
-    static func shouldRestart(isActive: Bool, lastStartedAt: Date?, now: Date) -> Bool {
-        guard isActive, let lastStartedAt else { return true }
-        return now.timeIntervalSince(lastStartedAt) > restartInterval
+    /// Restarting resets iOS's count and drops the minute it hasn't reported
+    /// yet, so only restart when it's needed: tracking isn't running, or a
+    /// new day has brought no minutes (seen on device: a repeating schedule
+    /// sent nothing on its second day). Changing productive apps forces one.
+    static func shouldRestart(isActive: Bool, startedDay: String?, lastEventDay: String?, today: String) -> Bool {
+        guard isActive else { return true }
+        return startedDay != today && lastEventDay != today
     }
 }

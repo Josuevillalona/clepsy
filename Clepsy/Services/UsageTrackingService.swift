@@ -23,10 +23,9 @@ class UsageTrackingService: ObservableObject {
     /// Sets up a daily midnight-to-midnight schedule with a threshold for each
     /// minute of productive-app use, up to the largest goal. The monitor turns
     /// "earn_N" into today's minutes, and the schedule's start each midnight
-    /// is when vice apps lock again. Restarting an active schedule resets the
-    /// thresholds, which then re-fire for today's usage so far (harmless:
-    /// EarnRules only moves the count up). Opening Clepsy restarts it (at most
-    /// every 5 minutes), since iOS can silently stop delivering its events.
+    /// is when vice apps lock again. A restart makes iOS count from zero again,
+    /// so today's minutes are carried over first (see EarnRules), and it only
+    /// restarts when needed (see MonitoringRules).
     func startDailyMonitoring(productiveSelection: FamilyActivitySelection, force: Bool = false) {
         guard !productiveSelection.applicationTokens.isEmpty ||
               !productiveSelection.categoryTokens.isEmpty else { return }
@@ -34,10 +33,12 @@ class UsageTrackingService: ObservableObject {
         let storage = sharedStorage
         Self.queue.async { [weak self] in
             let center = DeviceActivityCenter()
+            let today = DayKey.string(for: Date())
             let restart = force || MonitoringRules.shouldRestart(
                 isActive: center.activities.contains(.productiveApps),
-                lastStartedAt: storage.monitoringStartedAt,
-                now: Date()
+                startedDay: storage.monitoringStartedAt.map { DayKey.string(for: $0) },
+                lastEventDay: storage.lastEarnEventAt.map { DayKey.string(for: $0) },
+                today: today
             )
             guard restart else {
                 DispatchQueue.main.async { self?.isMonitoringActive = true }
@@ -63,6 +64,7 @@ class UsageTrackingService: ObservableObject {
             // Starting an activity that's already monitored replaces it, so
             // there's no stop first and never a moment with nothing tracking
             do {
+                storage.prepareForMonitoringRestart(today: today)
                 try center.startMonitoring(.productiveApps, during: schedule, events: events)
                 storage.recordMonitoringStarted(at: Date())
                 DispatchQueue.main.async { self?.isMonitoringActive = true }

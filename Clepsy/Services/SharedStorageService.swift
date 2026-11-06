@@ -195,18 +195,33 @@ class SharedStorageService {
         sharedDefaults?.set(state.reached, forKey: "earnReached")
     }
 
-    /// Minutes of today a reset set aside (see EarnRules)
-    func earnBaseline(for day: String) -> Int {
-        guard sharedDefaults?.string(forKey: "earnBaselineDay") == day else { return 0 }
-        return sharedDefaults?.integer(forKey: "earnBaseline") ?? 0
+    /// Minutes to add to iOS's count, which starts over at each monitoring
+    /// restart (see EarnRules)
+    func earnCarry(for day: String) -> Int {
+        guard sharedDefaults?.string(forKey: "earnCarryDay") == day else { return 0 }
+        return sharedDefaults?.integer(forKey: "earnCarry") ?? 0
+    }
+
+    private func saveEarnCarry(_ carry: Int, day: String) {
+        sharedDefaults?.set(carry, forKey: "earnCarry")
+        sharedDefaults?.set(day, forKey: "earnCarryDay")
+    }
+
+    private func earnedMinutes(on day: String) -> Int {
+        earnState.flatMap { $0.day == day ? $0.minutes : nil } ?? 0
+    }
+
+    /// Call right before restarting monitoring: iOS's count goes back to 0,
+    /// so today's minutes so far carry over
+    func prepareForMonitoringRestart(today: String) {
+        saveEarnCarry(earnedMinutes(on: today), day: today)
     }
 
     /// Starts today's goal over from 0 and locks it again. With
     /// `clearHistory`, also forgets every reached day ("Reset all data").
     func resetProgress(today: String, clearHistory: Bool) {
-        let counted = earnState.flatMap { $0.day == today ? $0.minutes : nil } ?? 0
-        sharedDefaults?.set(earnBaseline(for: today) + counted, forKey: "earnBaseline")
-        sharedDefaults?.set(today, forKey: "earnBaselineDay")
+        // iOS's current run is at (minutes - carry); hide all of it
+        saveEarnCarry(earnCarry(for: today) - earnedMinutes(on: today), day: today)
         saveEarnState(EarnState(day: today, minutes: 0, reached: false))
         saveUnlockedDay(nil)
 
@@ -228,6 +243,10 @@ class SharedStorageService {
     func recordEarnEvent(_ name: String, at date: Date) {
         sharedDefaults?.set(name, forKey: "diagLastEarnEvent")
         sharedDefaults?.set(date, forKey: "diagLastEarnEventAt")
+    }
+
+    var lastEarnEventAt: Date? {
+        sharedDefaults?.object(forKey: "diagLastEarnEventAt") as? Date
     }
 
 
