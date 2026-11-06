@@ -103,13 +103,15 @@ final class GoalRulesTests: XCTestCase {
         XCTAssertEqual(result.state, EarnState(day: "2026-11-04", minutes: 1, reached: false))
     }
 
-    func testMonitoringRestartsOncePerDay() {
-        // iOS can stop delivering a repeating schedule's thresholds on a new
-        // day; restarting re-sends today's minutes, which EarnRules dedupes
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: false, startedDay: "2026-11-05", today: "2026-11-05"))
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-04", today: "2026-11-05"))
-        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, startedDay: nil, today: "2026-11-05"))
-        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, startedDay: "2026-11-05", today: "2026-11-05"))
+    func testMonitoringRestartsWhenStaleOrInactive() {
+        // iOS can stop delivering thresholds while still reporting the
+        // schedule as registered; restarting re-sends today's minutes, which
+        // EarnRules dedupes. Opening Clepsy restarts at most every 5 minutes.
+        let now = Date(timeIntervalSince1970: 1_793_900_000)
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: false, lastStartedAt: now, now: now))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: nil, now: now))
+        XCTAssertTrue(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: now.addingTimeInterval(-301), now: now))
+        XCTAssertFalse(MonitoringRules.shouldRestart(isActive: true, lastStartedAt: now.addingTimeInterval(-120), now: now))
     }
 
     func testRestartRefiringTodaysMinutesDoesNotDoubleCount() {

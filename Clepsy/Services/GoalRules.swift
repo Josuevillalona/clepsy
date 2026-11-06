@@ -145,10 +145,14 @@ enum EarnRules {
 // MARK: - Monitoring
 
 enum MonitoringRules {
-    /// iOS can stop delivering a repeating schedule's thresholds on a new day
-    /// (seen on device: no earn events at all on day two). Restarting the
-    /// schedule once a day re-sends today's minutes, which EarnRules dedupes.
-    static func shouldRestart(isActive: Bool, startedDay: String?, today: String) -> Bool {
-        !isActive || startedDay != today
+    /// Seen on device: iOS can stop delivering a schedule's thresholds while
+    /// still reporting it as registered. Restarting makes iOS re-send the
+    /// minutes already used today (EarnRules dedupes them), so opening Clepsy
+    /// restarts it, at most this often.
+    static let restartInterval: TimeInterval = 5 * 60
+
+    static func shouldRestart(isActive: Bool, lastStartedAt: Date?, now: Date) -> Bool {
+        guard isActive, let lastStartedAt else { return true }
+        return now.timeIntervalSince(lastStartedAt) > restartInterval
     }
 }

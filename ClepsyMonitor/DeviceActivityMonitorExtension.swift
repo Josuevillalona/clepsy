@@ -41,6 +41,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         guard activity == .productiveApps,
               let minute = EarnRules.minute(fromEventName: event.rawValue) else { return }
+        sharedStorage.recordEarnEvent(event.rawValue, at: Date())
 
         let today = DayKey.string(for: Date())
         let result = EarnRules.apply(

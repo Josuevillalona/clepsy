@@ -214,14 +214,22 @@ class SharedStorageService {
         sharedDefaults?.set(kept, forKey: "reachedDays")
     }
 
-    /// The day the earning schedule was last (re)started (see MonitoringRules)
-    var monitoringStartDay: String? {
-        sharedDefaults?.string(forKey: "monitoringStartDay")
+    /// When the earning schedule was last (re)started (see MonitoringRules)
+    var monitoringStartedAt: Date? {
+        sharedDefaults?.object(forKey: "monitoringStartedAt") as? Date
     }
 
-    func saveMonitoringStartDay(_ day: String) {
-        sharedDefaults?.set(day, forKey: "monitoringStartDay")
+    func recordMonitoringStarted(at date: Date) {
+        sharedDefaults?.set(date, forKey: "monitoringStartedAt")
     }
+
+    // MARK: - Diagnostics (read off the device when tracking misbehaves)
+
+    func recordEarnEvent(_ name: String, at date: Date) {
+        sharedDefaults?.set(name, forKey: "diagLastEarnEvent")
+        sharedDefaults?.set(date, forKey: "diagLastEarnEventAt")
+    }
+
 
     private static let reachedDaysLimit = 60
 
