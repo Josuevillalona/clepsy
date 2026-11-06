@@ -1,5 +1,6 @@
 import SwiftUI
 import FamilyControls
+import DeviceActivity
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
@@ -9,6 +10,7 @@ struct DashboardView: View {
     @State private var celebrationOpacity: Double = 0
     @State private var celebrationScale: CGFloat = 0.5
     @State private var glowPulse = false
+    @State private var reportRefreshDate = Date()
 
     var body: some View {
         ZStack {
@@ -59,9 +61,16 @@ struct DashboardView: View {
             viewModel.refreshGoal()
             viewModel.syncPendingEvents()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            // Open across midnight: switch the report to the new day
+            reportRefreshDate = Date()
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 viewModel.syncPendingEvents()
+                // The report view only renders once; recreating it on every
+                // foreground makes iOS hand the extension fresh usage data
+                reportRefreshDate = Date()
             }
         }
         .overlay {
@@ -244,10 +253,30 @@ struct DashboardView: View {
             Text("\(viewModel.todayEarnedMinutes) of \(viewModel.dailyGoalMinutes) minutes earned today")
                 .font(.clepsyCaption)
                 .foregroundColor(.clepsyTextSecondary)
+
+            // Prototype: live Screen Time total for productive apps, drawn by
+            // the ClepsyReport extension (display-only — the app can't read it)
+            DeviceActivityReport(.productiveTime, filter: productiveTodayFilter)
+                .frame(height: 20)
+                .id(reportRefreshDate)
         }
         .padding()
         .background(Color.clepsySurface)
         .cornerRadius(20)
+    }
+
+    private var productiveTodayFilter: DeviceActivityFilter {
+        let today = Calendar.current.dateInterval(of: .day, for: reportRefreshDate)
+            ?? DateInterval(start: reportRefreshDate, duration: 0)
+        // Earning is per device, so count only this one
+        let device: DeviceActivityData.Device.Model = UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
+        return DeviceActivityFilter(
+            segment: .daily(during: today),
+            users: .all,
+            devices: .init([device]),
+            applications: viewModel.productiveSelection.applicationTokens,
+            categories: viewModel.productiveSelection.categoryTokens
+        )
     }
 
     // MARK: - Vice Apps

@@ -26,9 +26,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         // The session metering interval runs to end of day; if a session is
         // still open when it lapses, usage would stop counting — end it.
-        if activity == .viceApps && sharedStorage.isSessionActive {
-            endSession()
+        guard activity == .viceApps && sharedStorage.isSessionActive else { return }
+
+        guard SessionRules.isRealIntervalEnd(now: Date(), scheduledEnd: sharedStorage.sessionMeteringEnd) else {
+            print("ClepsyMonitor: Ignoring interval end from a monitoring restart")
+            return
         }
+        endSession(reason: .dayEnded)
     }
 
     // MARK: - Threshold Events
@@ -66,7 +70,11 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     /// any firing is retroactive usage from before blocking began (thresholds
     /// count cumulative whole-day usage) and must be ignored.
     private func handleViceAppEvent(_ event: DeviceActivityEvent.Name) {
-        guard sharedStorage.isSessionActive else {
+        let outcome = SessionRules.viceMinuteOutcome(
+            sessionActive: sharedStorage.isSessionActive,
+            balanceSeconds: sharedStorage.currentBalanceSeconds()
+        )
+        guard outcome != .ignore else {
             print("ClepsyMonitor: Ignoring \(event.rawValue) — no active session")
             return
         }
@@ -74,20 +82,24 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         sharedStorage.appendEvent(TimeEvent(seconds: 60, timestamp: Date(), type: .spent))
         print("ClepsyMonitor: Spent 60 seconds")
 
-        if sharedStorage.currentBalanceSeconds() <= 0 {
-            endSession()
+        if outcome == .spendAndEndSession {
+            endSession(reason: .balanceExhausted)
         }
     }
 
-    /// Balance exhausted: kick the user out of the vice app, then re-shield.
+    /// Session over (balance exhausted, or the day's interval lapsed): kick
+    /// the user out of the vice app, then re-shield.
     /// Applying a shield over a foreground app renders a stale cached screen
     /// (Apple bug FB14237883), so instead we hard-block momentarily — which
     /// terminates the running app — and land the user on the home screen with
     /// the notification explaining why. Their next launch is a fresh shield
     /// presentation, which always shows the correct zero-balance screen.
-    private func endSession() {
+    private func endSession(reason: SessionRules.EndReason) {
         sharedStorage.saveSessionActive(false)
-        postTimesUpNotification()
+
+        // Posted last: a banner that appears while the app is being closed
+        // gets swept away by the transition, so you'd hear it but not see it
+        defer { postSessionEndedNotification(reason: reason) }
 
         guard let selection = sharedStorage.loadViceSelection() else { return }
         let store = ManagedSettingsStore()
@@ -108,12 +120,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
     }
 
-    private func postTimesUpNotification() {
+    private func postSessionEndedNotification(reason: SessionRules.EndReason) {
         guard sharedStorage.notificationsEnabled else { return }
 
+        let copy = SessionRules.endNotification(for: reason)
         let content = UNMutableNotificationContent()
-        content.title = "Time's up ⏳"
-        content.body = "You've used all your earned time — apps are locked again. Tap to earn more in Clepsy."
+        content.title = copy.title
+        content.body = copy.body
         content.sound = .default
 
         let request = UNNotificationRequest(

@@ -5,9 +5,13 @@ import FamilyControls
 @MainActor
 class UsageTrackingService: ObservableObject {
     private let center = DeviceActivityCenter()
-    private let sharedStorage = SharedStorageService()
+    private let sharedStorage: SharedStorageService
 
     @Published var isMonitoringActive = false
+
+    init(sharedStorage: SharedStorageService = SharedStorageService()) {
+        self.sharedStorage = sharedStorage
+    }
 
     // MARK: - Daily Earning Monitoring
 
@@ -58,36 +62,8 @@ class UsageTrackingService: ObservableObject {
     /// minute already used today the moment a session starts. Runs to end of
     /// day (or now+16 min near midnight — DeviceActivity's 15-min minimum).
     func startViceSpendingMonitoring(viceSelection: FamilyActivitySelection) {
-        guard !viceSelection.applicationTokens.isEmpty ||
-              !viceSelection.categoryTokens.isEmpty else { return }
-
-        let calendar = Calendar.current
-        let now = Date()
-        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
-            ?? now.addingTimeInterval(16 * 60)
-        if end.timeIntervalSince(now) < 15 * 60 {
-            end = now.addingTimeInterval(16 * 60)
-        }
-
-        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
-        let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents(components, from: now),
-            intervalEnd: calendar.dateComponents(components, from: end),
-            repeats: false
-        )
-
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for minutes in 1...180 {
-            events[DeviceActivityEvent.Name("spend_\(minutes)")] = DeviceActivityEvent(
-                applications: viceSelection.applicationTokens,
-                categories: viceSelection.categoryTokens,
-                threshold: DateComponents(minute: minutes)
-            )
-        }
-
         do {
-            center.stopMonitoring([.viceApps])
-            try center.startMonitoring(.viceApps, during: schedule, events: events)
+            try ViceMonitoring.restart(for: viceSelection, storage: sharedStorage)
         } catch {
             print("❌ Failed to start vice spending monitoring: \(error)")
         }
@@ -120,5 +96,5 @@ class UsageTrackingService: ObservableObject {
 
 extension DeviceActivityName {
     static let productiveApps = DeviceActivityName("productiveApps")
-    static let viceApps       = DeviceActivityName("viceApps")
+    static let viceApps       = ViceMonitoring.activity
 }

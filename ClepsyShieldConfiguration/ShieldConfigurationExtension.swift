@@ -13,8 +13,6 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private func makeConfiguration(appName: String? = nil, token: ApplicationToken? = nil) -> ShieldConfiguration {
         Self.log.info("Shield configuration requested for \(appName ?? "unknown", privacy: .public)")
-        let title = appName.map { "\($0) is blocked" } ?? "This app is blocked"
-
         // fastBalanceSeconds reads only UserDefaults — this extension is killed
         // by the system (falling back to the default shield) if it's slow
         let storage = SharedStorageService()
@@ -25,32 +23,19 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         if let token, let tokenData = try? JSONEncoder().encode(token) {
             storage.setShieldShowedBalance(availableMinutes > 0, tokenKey: tokenData.base64EncodedString())
         }
-        let subtitleText: String
-        let primaryText: String
-        // Shield extensions can't launch apps, so a lone "Go Back" is the only
-        // honest zero-balance action; the secondary button exists only when
-        // the primary does something different (unlock).
-        let secondaryLabel: ShieldConfiguration.Label?
-
-        if availableMinutes > 0 {
-            subtitleText = "You have \(availableMinutes) min. It only counts down while you're in blocked apps."
-            primaryText = "Use My Time"
-            secondaryLabel = ShieldConfiguration.Label(text: "Go Back", color: Self.muted)
-        } else {
-            subtitleText = "No time available yet. Earn minutes in your productive apps, then come back."
-            primaryText = "Go Back"
-            secondaryLabel = nil
-        }
+        let content = ShieldRules.content(appName: appName, availableMinutes: availableMinutes)
 
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialDark,
             backgroundColor: Self.background,
             icon: UIImage(named: "shield_icon"),
-            title: ShieldConfiguration.Label(text: title, color: .white),
-            subtitle: ShieldConfiguration.Label(text: subtitleText, color: Self.muted),
-            primaryButtonLabel: ShieldConfiguration.Label(text: primaryText, color: Self.background),
+            title: ShieldConfiguration.Label(text: content.title, color: .white),
+            subtitle: ShieldConfiguration.Label(text: content.subtitle, color: Self.muted),
+            primaryButtonLabel: ShieldConfiguration.Label(text: content.primaryButton, color: Self.background),
             primaryButtonBackgroundColor: Self.gold,
-            secondaryButtonLabel: secondaryLabel
+            secondaryButtonLabel: content.secondaryButton.map {
+                ShieldConfiguration.Label(text: $0, color: Self.muted)
+            }
         )
     }
 

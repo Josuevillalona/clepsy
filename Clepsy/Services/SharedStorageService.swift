@@ -2,7 +2,9 @@ import Foundation
 import FamilyControls
 
 class SharedStorageService {
-    private let appGroup = "group.com.clepsy.shared"
+    static let defaultAppGroup = "group.com.clepsy.shared"
+
+    private let appGroup: String
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.clepsy.shared", qos: .userInitiated)
 
@@ -11,15 +13,19 @@ class SharedStorageService {
     }
 
     private lazy var containerURL: URL = {
+        // Falls back to a per-group temp folder, so a test suite name that
+        // isn't a real App Group gets its own isolated event file
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
-            ?? FileManager.default.temporaryDirectory
+            ?? fileManager.temporaryDirectory.appendingPathComponent(appGroup)
     }()
 
     private lazy var eventsFileURL: URL = {
         containerURL.appendingPathComponent("pendingTimeEvents.json")
     }()
 
-    init() {
+    /// Pass a non-App-Group suite name in tests to keep them off real data
+    init(appGroup: String = SharedStorageService.defaultAppGroup) {
+        self.appGroup = appGroup
         // Ensure container directory exists
         try? fileManager.createDirectory(at: containerURL, withIntermediateDirectories: true)
     }
@@ -196,6 +202,17 @@ class SharedStorageService {
 
     var isSessionActive: Bool {
         sharedDefaults?.bool(forKey: "sessionActive") ?? false
+    }
+
+    /// When the current session's metering interval is scheduled to end.
+    /// Restarting monitoring also fires intervalDidEnd for the old interval,
+    /// so the monitor compares against this to tell a real lapse from that.
+    func saveSessionMeteringEnd(_ date: Date) {
+        sharedDefaults?.set(date, forKey: "sessionMeteringEnd")
+    }
+
+    var sessionMeteringEnd: Date? {
+        sharedDefaults?.object(forKey: "sessionMeteringEnd") as? Date
     }
 
     // MARK: - Notifications Toggle Mirror

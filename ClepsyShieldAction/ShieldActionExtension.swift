@@ -14,29 +14,33 @@ class ShieldActionExtension: ShieldActionDelegate {
         case .primaryButtonPressed:
             let storage = SharedStorageService()
             let availableMinutes = storage.currentBalanceSeconds() / 60
+            let tokenKey = (try? JSONEncoder().encode(application))?.base64EncodedString()
 
-            guard availableMinutes > 0 else {
-                // iOS may have shown a cached screen from when there WAS
-                // balance ("Use my time"). If so, defer — that asks the
-                // system to re-query the configuration for a redraw with the
-                // real zero-balance screen. Recording false first means a
-                // second tap (or a fresh "Go Back" screen) always closes.
-                if let tokenData = try? JSONEncoder().encode(application),
-                   storage.shieldShowedBalance(tokenKey: tokenData.base64EncodedString()) == true {
-                    storage.setShieldShowedBalance(false, tokenKey: tokenData.base64EncodedString())
-                    Self.log.info("Primary tap: zero balance on stale screen — deferring for redraw")
-                    completionHandler(.defer)
-                } else {
-                    Self.log.info("Primary tap: zero balance on fresh screen — closing")
-                    completionHandler(.close)
+            switch ShieldRules.primaryTap(
+                availableMinutes: availableMinutes,
+                screenShowedBalance: tokenKey.flatMap { storage.shieldShowedBalance(tokenKey: $0) }
+            ) {
+            case .startSession:
+                Self.log.info("Primary tap: starting spending session (balance \(availableMinutes, privacy: .public) min)")
+                startSession(storage: storage)
+                // Shields are gone, so .none lets the user proceed into the app
+                completionHandler(.none)
+
+            case .redrawStaleScreen:
+                // iOS showed a cached screen from when there WAS balance.
+                // Defer asks the system to re-query the configuration for a
+                // redraw. Recording false first means a second tap (or a fresh
+                // "Go Back" screen) always closes.
+                if let tokenKey {
+                    storage.setShieldShowedBalance(false, tokenKey: tokenKey)
                 }
-                return
-            }
+                Self.log.info("Primary tap: zero balance on stale screen — deferring for redraw")
+                completionHandler(.defer)
 
-            Self.log.info("Primary tap: starting spending session (balance \(availableMinutes, privacy: .public) min)")
-            startSession(storage: storage)
-            // Shields are gone, so .none lets the user proceed into the app
-            completionHandler(.none)
+            case .close:
+                Self.log.info("Primary tap: zero balance on fresh screen — closing")
+                completionHandler(.close)
+            }
 
         case .secondaryButtonPressed:
             completionHandler(.close)
@@ -81,45 +85,9 @@ class ShieldActionExtension: ShieldActionDelegate {
         store.shield.applications = nil
         store.shield.applicationCategories = nil
 
-        restartViceMonitoring(storage: storage)
-    }
-
-    /// Starts usage metering with the schedule interval anchored at NOW.
-    /// Thresholds only count usage inside the interval, so a midnight-anchored
-    /// schedule would instantly re-fire for every vice minute already used
-    /// today the moment the session starts, draining the balance in seconds.
-    private func restartViceMonitoring(storage: SharedStorageService) {
         guard let selection = storage.loadViceSelection() else { return }
-
-        let calendar = Calendar.current
-        let now = Date()
-        var end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now)
-            ?? now.addingTimeInterval(16 * 60)
-        if end.timeIntervalSince(now) < 15 * 60 {
-            end = now.addingTimeInterval(16 * 60)
-        }
-
-        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
-        let schedule = DeviceActivitySchedule(
-            intervalStart: calendar.dateComponents(components, from: now),
-            intervalEnd: calendar.dateComponents(components, from: end),
-            repeats: false
-        )
-
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        for minutes in 1...180 {
-            events[DeviceActivityEvent.Name("spend_\(minutes)")] = DeviceActivityEvent(
-                applications: selection.applicationTokens,
-                categories: selection.categoryTokens,
-                threshold: DateComponents(minute: minutes)
-            )
-        }
-
-        let center = DeviceActivityCenter()
-        let activity = DeviceActivityName("viceApps")
-        center.stopMonitoring([activity])
         do {
-            try center.startMonitoring(activity, during: schedule, events: events)
+            try ViceMonitoring.restart(for: selection, storage: storage)
         } catch {
             Self.log.error("Failed to restart vice monitoring: \(error.localizedDescription, privacy: .public)")
         }
